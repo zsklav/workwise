@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Job
+from routers.companies import router as companies_router
 from schemas import JobCreate, JobRead, JobUpdate
 
 
 app = FastAPI(title="WorkWise API")
+app.include_router(companies_router)
 
 DbSession = Annotated[Session, Depends(get_db)]
 

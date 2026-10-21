@@ -12,7 +12,7 @@
 
 The shared engine manages a connection pool. `SessionLocal` creates independent
 request sessions. An uncommitted transaction is rolled back when its session
-is closed. Database failures currently propagate as server errors; recovery,
+is closed. Unexpected database failures propagate as server errors; recovery,
 timeouts beyond connection establishment, and error logging need later work.
 
 ## Contracts
@@ -96,6 +96,12 @@ application startup. It was baselined at Alembic revision `0001`, then upgraded
 to `b1e18f4fbb2e` to add nullable description text. Tests now upgrade their own
 database with Alembic too, replacing metadata-based table creation.
 See [migration setup and verification](migrations.md).
+
+Revision `0003` additionally creates the companies table. Its create/read
+routes live in `routers/companies.py` and translate the named unique-company
+constraint violation to 409 after rolling back the failed transaction. Jobs
+still store company text independently; no foreign key or backfill has been
+applied. See [Company APIs and constraints](companies.md).
 
 ## PATCH learning checkpoint
 

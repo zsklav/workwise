@@ -4,15 +4,17 @@ A Python backend for managing jobs, built incrementally while learning backend
 engineering, database design, testing, and distributed systems.
 
 The Phase 1 checkpoint established a working single FastAPI application with
-PostgreSQL persistence. The current Phase 2 checkpoint adds bounded job-list
-pagination and exact company filtering. The
-project was built from scratch; no Java migration is included.
+PostgreSQL persistence. Later checkpoints add bounded job-list pagination,
+exact company filtering, and a Company resource with create/read APIs.
+The project was built from scratch; no Java migration is included.
 
 ## Implemented
 
 - Job creation, listing, retrieval, replacement, partial updates, and deletion.
 - Job-list pagination with validated limit/offset and deterministic ID ordering.
 - Optional exact company filtering, applied before pagination.
+- Company creation, paginated listing, and retrieval, with database-enforced
+  unique names and a 409 response for duplicates.
 - Optional job descriptions with distinct omitted-field and explicit-null behavior.
 - Pydantic input validation and typed response models.
 - SQLAlchemy ORM, request-scoped sessions, and database-generated IDs.
@@ -21,8 +23,10 @@ project was built from scratch; no Java migration is included.
   commit verification.
 - OpenAPI documentation at `/docs`.
 
-Company is currently a text field on a job, not a separate entity or service.
-Additional filters, authentication, messaging, containers, and deployment are planned.
+Companies now have their own table. A job's `company` field remains text;
+linking jobs to company IDs and migrating existing values is the next step.
+Company update/delete, authentication, messaging, containers, and deployment
+are still planned.
 
 ## Stack
 
@@ -46,15 +50,16 @@ flowchart LR
     Client[Client / Swagger] --> API[FastAPI routes]
     API --> Validation[Pydantic schemas]
     API --> Session[Request database session]
-    Session --> ORM[SQLAlchemy Job model]
+    Session --> ORM[SQLAlchemy Job and Company models]
     ORM --> PostgreSQL[(PostgreSQL)]
     Alembic[Alembic migrations] --> PostgreSQL
 ```
 
 ```text
 main.py                App and job endpoints
+routers/companies.py   Company create/read endpoints
 schemas.py             Request and response models
-models.py              SQLAlchemy table mapping
+models.py              SQLAlchemy table mappings
 database.py            Shared engine and session dependency
 settings.py            Environment configuration
 migrations/            Versioned schema changes
@@ -119,11 +124,12 @@ python -m alembic current
 python -m alembic check
 ```
 
-Then reconnect as the administrator to `workwise` and grant runtime CRUD access
-to the newly created jobs table:
+Then reconnect as the administrator to `workwise` and grant runtime access
+to the newly created tables:
 
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs TO workwise_app;
+GRANT SELECT, INSERT ON TABLE public.companies TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
@@ -154,6 +160,9 @@ python -m uvicorn main:app --reload
 | PUT | `/jobs/{job_id}` | Replace editable job fields | 200 |
 | PATCH | `/jobs/{job_id}` | Update supplied fields only | 200 |
 | DELETE | `/jobs/{job_id}` | Delete a job, no response body | 204 |
+| POST | `/companies` | Create a company with a unique name | 201 |
+| GET | `/companies` | List a page of companies in ID order | 200 |
+| GET | `/companies/{company_id}` | Retrieve a company | 200 |
 
 Example POST body:
 
@@ -189,6 +198,23 @@ receive an empty array if nothing matches. `company=` is invalid (422). Quotes,
 percent signs, and underscores are treated as literal characters, not SQL or
 wildcard syntax. Company values are passed as bound SQL parameters.
 
+Example `POST /companies` body:
+
+```json
+{
+  "name": "WorkWise",
+  "description": "A job management platform"
+}
+```
+
+Company names must contain a non-whitespace character and be at most 200
+characters. Names are case-sensitive and are not trimmed. Description is
+optional; unknown request keys are rejected. An identical name returns `409`
+with `{"detail": "Company name already exists"}`. Missing companies return
+`404`; invalid input returns `422`. Company lists accept the same pagination
+bounds as job lists. Creating a company does not change existing jobs or
+restrict job company names yet. See [Company notes](docs/companies.md).
+
 ## Tests
 
 ```powershell
@@ -198,14 +224,14 @@ python -m pytest -v
 Tests explicitly use `workwise_test`, applying Alembic migrations through a
 shared test connection before running. The runtime role owns this separate test
 database, enabling test setup without widening its development permissions.
-The jobs table must start empty; existing rows are not silently deleted.
+The jobs and companies tables must start empty; existing rows are not silently deleted.
 
 Most cases roll back their changes, including ORM commits through savepoints.
 A separate persistence case uses real commits, checks independent connections,
 and removes only its uniquely marked test row. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified checkpoint: **45 tests passed** on 2026-10-21. The learner also
+Last verified checkpoint: **66 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 ## Current scope and next steps
@@ -215,12 +241,14 @@ no authentication or ownership checks, and concurrency conflict detection has
 not been implemented. Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Next: additional filters, a company entity and relationships, authentication
-and authorization, then packaging and deployment. Messaging, resilience, and
+Next: link jobs to companies with a reviewed migration and backfill, then
+company update/delete rules, authentication and authorization, and packaging
+and deployment. Messaging, resilience, and
 distributed tracing will follow concrete business workflows.
 
 ## Engineering notes
 
 - [Database behavior and API contracts](docs/database.md)
+- [Company APIs and database constraints](docs/companies.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

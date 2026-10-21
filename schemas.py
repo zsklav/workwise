@@ -42,3 +42,18 @@ class JobUpdate(BaseModel):
         if value is None:
             raise ValueError("Field must not be null")
         return value
+
+
+class CompanyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    description: str | None = None
+
+
+class CompanyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None = None

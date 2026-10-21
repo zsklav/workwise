@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from database import database_url, get_db
 from main import app
-from models import Base, Job
+from models import Base, Company, Job
 
 
 @pytest.fixture(scope="session")
@@ -30,9 +30,11 @@ def test_engine() -> Iterator[Engine]:
                 raise RuntimeError("Database tests must use workwise_test.")
 
             inspector = inspect(connection)
-            if inspector.has_table("jobs", schema="public") and not inspector.has_table(
-                "alembic_version", schema="public"
-            ):
+            has_managed_tables = any(
+                inspector.has_table(name, schema="public")
+                for name in ("jobs", "companies")
+            )
+            if has_managed_tables and not inspector.has_table("alembic_version", schema="public"):
                 raise RuntimeError(
                     "Unversioned test schema: verify and baseline it before running tests."
                 )
@@ -49,10 +51,12 @@ def test_engine() -> Iterator[Engine]:
             if compare_metadata(migration_context, Base.metadata):
                 raise RuntimeError("Test migrations do not match the ORM models.")
 
-            if connection.scalar(select(func.count()).select_from(Job)) != 0:
-                raise RuntimeError(
-                    "workwise_test.jobs must start empty. Existing rows were not deleted."
-                )
+            for model in (Job, Company):
+                if connection.scalar(select(func.count()).select_from(model)) != 0:
+                    raise RuntimeError(
+                        f"workwise_test.{model.__tablename__} must start empty. "
+                        "Existing rows were not deleted."
+                    )
 
         yield engine
     finally:

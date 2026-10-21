@@ -8,9 +8,9 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has forty-two API cases backed by PostgreSQL, two database
-transaction isolation cases, and one independent-connection persistence case.
-All jobs endpoints now use PostgreSQL.
+The current suite has 66 cases covering job and company APIs backed by
+PostgreSQL, database constraints, transaction isolation, and independent-connection
+job persistence. All job and company endpoints use PostgreSQL.
 
 ## PostgreSQL setup
 
@@ -31,13 +31,13 @@ tables. Runtime development permissions are not broadened. The fixture also
 compares the migrated schema to the ORM metadata and fails on drift.
 
 A fresh empty test database is initialized through migrations. Existing jobs
-tables without an Alembic version require explicit verification and baseline
+or companies tables without an Alembic version require explicit verification and baseline
 adoption; the fixture stops rather than guessing their version. The original
 empty metadata-created test table was checked against revision 0001, stamped,
 and upgraded to the description revision on 2026-10-21.
 
-The jobs table must start empty. If it contains existing rows, the fixture
-stops without deleting them.
+The jobs and companies tables must start empty. If either contains existing
+rows, the fixture stops without deleting them.
 
 ## Isolation and cleanup
 
@@ -85,10 +85,16 @@ SQL-like input as data, and rejection of an empty company value. The first
 company-filter test initially failed because all companies were returned,
 then passed once the query condition was added.
 
+Company cases cover create/read/list, optional descriptions, case-sensitive
+names, duplicate-name conflicts preserving the original row, subsequent writes
+after a conflict, invalid bodies, missing/invalid IDs, pagination, and keeping
+jobs unchanged. A direct ORM insert also verifies the database unique constraint.
+These cases use rollback fixtures; they do not simulate concurrent inserts.
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -v --tb=short` completed with **45 passed**
-against local PostgreSQL, including all CRUD endpoints. The command was run
+On 2026-10-21, `python -m pytest -v --tb=short` completed with **66 passed**
+against local PostgreSQL, including job CRUD and company create/read endpoints. The command was run
 with access to the local database server outside the restricted agent sandbox.
 
 ## References

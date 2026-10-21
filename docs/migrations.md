@@ -99,6 +99,27 @@ Verification on 2026-10-21: all 18 automated cases passed, including optional
 description CRUD, validation, clearing, and independent-connection persistence.
 Development `alembic check` reported `No new upgrade operations detected.`
 
+## Company table: revision 0003
+
+Revision `0003` follows `b1e18f4fbb2e` and creates `public.companies` with an
+identity ID, required `VARCHAR(200)` name, nullable text description, a unique
+name constraint, and a check rejecting empty or space-only names. The API also
+rejects other whitespace-only names. This revision does not alter jobs or add
+a foreign key.
+
+On 2026-10-21, the development upgrade was applied in a transaction with a
+five-second lock timeout and a SHARE lock on jobs. Before/after row snapshots
+matched: all three existing jobs were preserved. Alembic reported revision
+`0003`, and `alembic check` found no pending schema operations. The 66-case
+test suite passed against the migrated test database.
+
+Runtime `SELECT, INSERT` permissions on companies were granted separately
+from the migration. The migration contains no environment-specific role names;
+fresh installations must apply the grants documented in the README. An insert
+and read using the runtime role were verified in a transaction and rolled back.
+No temporary company row was retained. The company-table-dropping downgrade
+has not been executed.
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
