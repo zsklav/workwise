@@ -61,6 +61,7 @@ jobs:
         run: |
           python -m pip check
           python -m alembic check
+          python -c "from database import engine; from sqlalchemy import text; connection = engine.connect(); connection.execute(text('SELECT version_num FROM public.alembic_version')); connection.close()"
       - name: Run PostgreSQL tests
         run: python -m pytest -q --tb=short
 
@@ -80,6 +81,9 @@ jobs:
           docker compose --env-file .env.docker exec -T api python -c "import os; assert os.getuid() == 10001; assert 'MIGRATION_DB_PASSWORD' not in os.environ; assert 'POSTGRES_PASSWORD' not in os.environ"
       - name: Smoke test through HTTP
         run: python3 scripts/smoke_test.py
+      - name: Show API and migration diagnostics on failure
+        if: failure()
+        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate
       - name: Stop disposable stack
         if: always()
         run: docker compose --env-file .env.docker down --volumes

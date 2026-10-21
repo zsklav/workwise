@@ -34,7 +34,8 @@ an environment file alone does not rotate existing database passwords.
 Compose waits for PostgreSQL's health check, then for migration success, then
 starts the API. The migration runner applies reviewed revisions and explicit
 grants in a transaction. It grants users SELECT/INSERT and company/job CRUD;
-it does not give the runtime role DDL or user role-management access.
+it also grants read-only access to Alembic's version table for readiness. It
+does not give the runtime role DDL or user role-management access.
 
 ## Image and health checks
 
@@ -99,7 +100,8 @@ runner. Never mount the native PostgreSQL data directory into this stack.
 with read-only repository permission and a timeout on each job. It has two jobs:
 
 - **tests:** bootstrap fresh PostgreSQL roles/databases, apply all migrations
-  and grants, run dependency/schema checks, then the full Pytest suite. CI-only
+  and grants, run dependency/schema and runtime version-table access checks,
+  then the full Pytest suite. CI-only
   credentials refer to the disposable service container, never local data.
 - **containers:** generate random disposable credentials, validate Compose,
   build/start the image, verify UID and absence of privileged environment

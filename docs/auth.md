@@ -79,6 +79,7 @@ fail rather than promoting an existing account. Role changes/deactivation are
 trusted database-operator actions; there is no public role-management endpoint.
 
 Runtime grants are SELECT/INSERT on users and CRUD on companies/jobs. The
+readiness endpoint additionally has SELECT on Alembic's version table. The
 runtime role has no user UPDATE/DELETE or schema-management grant. API ownership
 checks are application authorization, not PostgreSQL row-level security;
 database credentials must remain private. Configure HTTPS when deploying bearer

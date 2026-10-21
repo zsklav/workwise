@@ -22,6 +22,7 @@ timeouts beyond connection establishment, and error logging need later work.
 | Method and path | Behavior | Success | Missing job |
 |---|---|---|---|
 | `GET /health` | Process health; no database query | 200 | n/a |
+| `GET /ready` | Database access and expected Alembic revision; 503 if unavailable/stale | 200 | n/a |
 | `GET /jobs` | Page of jobs, optionally filtered by company, ordered by ID | 200 | Empty list |
 | `GET /jobs/{job_id}` | Retrieve a job | 200 | 404 |
 | `POST /jobs` | Create with database-generated ID | 201 | n/a |

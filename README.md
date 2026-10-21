@@ -216,6 +216,7 @@ to the newly created tables:
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs TO workwise_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 GRANT SELECT, INSERT ON TABLE public.users TO workwise_app;
+GRANT SELECT ON TABLE public.alembic_version TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
