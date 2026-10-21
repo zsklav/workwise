@@ -120,6 +120,35 @@ and read using the runtime role were verified in a transaction and rolled back.
 No temporary company row was retained. The company-table-dropping downgrade
 has not been executed.
 
+## Linking jobs: revision 0004
+
+Revision `0004` replaces `jobs.company` text with a required `company_id`
+foreign key referencing `companies.id`, using `ON DELETE RESTRICT`, and adds
+index `ix_jobs_company_id`. The API accepts company IDs for job writes and
+retains company name text only in responses and the name filter.
+
+The upgrade takes an ACCESS EXCLUSIVE lock on both tables with a five-second
+lock wait timeout, then checks legacy names before altering the schema. Empty,
+whitespace-only, or over-200-character names abort the migration for explicit
+review. It inserts distinct exact names, reuses existing unique company names
+without changing their descriptions, backfills IDs, adds NOT NULL and the
+foreign key, then drops the redundant job name column. These changes run in
+one PostgreSQL transaction. Schedule this migration while the app is stopped
+for deployment: it blocks table access and is not a zero-downtime rollout.
+
+On 2026-10-21, 103 tests passed, including upgrade/downgrade with seeded legacy
+data and rejection of invalid names without partial changes. The development
+upgrade then preserved snapshots of all three jobs and backfilled two companies.
+The migrated schema matched ORM metadata. Existing runtime table grants still
+cover job writes; no new role privileges were added.
+Read/create/update/delete through the API were also verified using the runtime
+role in an outer rollback transaction; existing development jobs were unchanged.
+
+Downgrade restores job text from each referenced company's current name,
+removes the foreign key/index/ID column, and retains Company rows. It does not
+recover historical company names after future renames. Downgrade was tested
+inside rollback transactions in `workwise_test`, and was not run on development.
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)

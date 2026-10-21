@@ -2,23 +2,33 @@ from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy.orm import Session
 
-from models import Job
+from models import Company, Job
 
 
 @pytest.fixture
 def client(db_client: TestClient) -> TestClient:
     return db_client
 
-def test_health(client: TestClient):
+
+@pytest.fixture
+def company_ids(db_session: Session) -> dict[str, int]:
+    companies = [Company(name=name) for name in (
+        "Example", "WorkWise", "O'Reilly %_ Labs", "OReilly Other Labs",
+    )]
+    db_session.add_all(companies)
+    db_session.commit()
+    return {company.name: company.id for company in companies}
+
+def test_health(client: TestClient, company_ids: dict[str, int]):
     response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "OK"}
 
-def test_create_and_get_job(client: TestClient):
+def test_create_and_get_job(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Backend Intern",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
     }
 
@@ -28,29 +38,29 @@ def test_create_and_get_job(client: TestClient):
 
     created_job = create_response.json()
     assert isinstance(created_job["id"], int)
-    assert created_job == {"id": created_job["id"], **payload, "description": None}
+    assert created_job == {"id": created_job["id"], **payload, "description": None, "company": "Example"}
 
     get_response = client.get(f"/jobs/{created_job['id']}")
 
     assert get_response.status_code == 200
     assert get_response.json() == created_job
 
-def test_jobs_start_empty(client: TestClient):
+def test_jobs_start_empty(client: TestClient, company_ids: dict[str, int]):
     response = client.get("/jobs")
 
     assert response.status_code == 200
     assert response.json() == []
 
-def test_get_missing_job(client: TestClient):
+def test_get_missing_job(client: TestClient, company_ids: dict[str, int]):
     response = client.get("/jobs/999")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
 
-def test_delete_job(client: TestClient):
+def test_delete_job(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Python Intern",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
     }
 
@@ -67,10 +77,10 @@ def test_delete_job(client: TestClient):
 
     assert get_response.status_code == 404
 
-def test_update_job(client: TestClient):
+def test_update_job(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Python Intern",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
     }
 
@@ -80,7 +90,7 @@ def test_update_job(client: TestClient):
 
     updated_payload = {
         "title": "Python Developer",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Bengaluru",
     }
 
@@ -89,7 +99,7 @@ def test_update_job(client: TestClient):
         json=updated_payload,
     )
 
-    expected_job = {"id": job_id, **updated_payload, "description": None}
+    expected_job = {"id": job_id, **updated_payload, "description": None, "company": "Example"}
 
     assert update_response.status_code == 200
     assert update_response.json() == expected_job
@@ -107,11 +117,12 @@ def test_update_job(client: TestClient):
 @pytest.mark.parametrize(
     "payload",
     [
-        {"company": "Example", "location": "Remote"},
-        {"title": "", "company": "Example", "location": "Remote"},
+        {"location": "Remote"},
+        {"title": "", "location": "Remote"},
     ],
 )
-def test_create_job_rejects_invalid_title(client: TestClient, payload):
+def test_create_job_rejects_invalid_title(client: TestClient, company_ids: dict[str, int], payload):
+    payload = {**payload, "company_id": company_ids["Example"]}
     response = client.post("/jobs", json=payload)
 
     assert response.status_code == 422
@@ -123,11 +134,11 @@ def test_create_job_rejects_invalid_title(client: TestClient, payload):
 
 
 @pytest.mark.parametrize("method", ["put", "delete"])
-def test_mutating_missing_job_returns_404(client: TestClient, method: str):
+def test_mutating_missing_job_returns_404(client: TestClient, company_ids: dict[str, int], method: str):
     if method == "put":
         response = client.put(
             "/jobs/999",
-            json={"title": "Missing", "company": "Example", "location": "Remote"},
+            json={"title": "Missing", "company_id": company_ids["Example"], "location": "Remote"},
         )
     else:
         response = client.delete("/jobs/999")
@@ -137,7 +148,7 @@ def test_mutating_missing_job_returns_404(client: TestClient, method: str):
     assert client.get("/jobs").json() == []
 
 
-def test_get_job_rejects_non_integer_id(client: TestClient):
+def test_get_job_rejects_non_integer_id(client: TestClient, company_ids: dict[str, int]):
     response = client.get("/jobs/abc")
 
     assert response.status_code == 422
@@ -145,10 +156,10 @@ def test_get_job_rejects_non_integer_id(client: TestClient):
 
 
 @pytest.mark.parametrize("description", ["Build and maintain Python APIs", None])
-def test_create_job_with_optional_description(client: TestClient, description):
+def test_create_job_with_optional_description(client: TestClient, company_ids: dict[str, int], description):
     payload = {
         "title": "Python Developer",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
         "description": description,
     }
@@ -156,16 +167,16 @@ def test_create_job_with_optional_description(client: TestClient, description):
 
     assert response.status_code == 201
     job_id = response.json()["id"]
-    expected_job = {"id": job_id, **payload}
+    expected_job = {"id": job_id, **payload, "company": "Example"}
     assert response.json() == expected_job
     assert client.get(f"/jobs/{job_id}").json() == expected_job
     assert client.get("/jobs").json() == [expected_job]
 
 
-def test_put_replaces_and_can_clear_description(client: TestClient):
+def test_put_replaces_and_can_clear_description(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Python Developer",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
         "description": "Original description",
     }
@@ -176,20 +187,20 @@ def test_put_replaces_and_can_clear_description(client: TestClient):
     updated_payload = {**payload, "description": "Updated description"}
     updated = client.put(f"/jobs/{job_id}", json=updated_payload)
     assert updated.status_code == 200
-    assert updated.json() == {"id": job_id, **updated_payload}
+    assert updated.json() == {"id": job_id, **updated_payload, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == updated.json()
 
     replacement = {key: value for key, value in payload.items() if key != "description"}
     cleared = client.put(f"/jobs/{job_id}", json=replacement)
     assert cleared.status_code == 200
-    assert cleared.json() == {"id": job_id, **replacement, "description": None}
+    assert cleared.json() == {"id": job_id, **replacement, "description": None, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == cleared.json()
 
 
-def test_create_job_rejects_non_text_description(client: TestClient):
+def test_create_job_rejects_non_text_description(client: TestClient, company_ids: dict[str, int]):
     response = client.post("/jobs", json={
         "title": "Python Developer",
-        "company": "Example",
+        "company_id": company_ids["Example"],
         "location": "Remote",
         "description": 123,
     })
@@ -198,10 +209,10 @@ def test_create_job_rejects_non_text_description(client: TestClient):
     assert response.json()["detail"][0]["loc"] == ["body", "description"]
     assert client.get("/jobs").json() == []
 
-def test_patch_job_updates_only_title(client: TestClient):
+def test_patch_job_updates_only_title(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Python Intern",
-        "company": "WorkWise",
+        "company_id": company_ids["WorkWise"],
         "location": "Remote",
         "description": "Build backend APIs",
     }
@@ -219,6 +230,7 @@ def test_patch_job_updates_only_title(client: TestClient):
         "id": job_id,
         **payload,
         "title": "Python Developer",
+        "company": "WorkWise",
     }
 
     assert response.status_code == 200
@@ -226,10 +238,10 @@ def test_patch_job_updates_only_title(client: TestClient):
     assert client.get(f"/jobs/{job_id}").json() == expected
 
 
-def test_patch_description_can_be_replaced_and_cleared(client: TestClient):
+def test_patch_description_can_be_replaced_and_cleared(client: TestClient, company_ids: dict[str, int]):
     payload = {
         "title": "Python Intern",
-        "company": "WorkWise",
+        "company_id": company_ids["WorkWise"],
         "location": "Remote",
         "description": "Original description",
     }
@@ -241,7 +253,7 @@ def test_patch_description_can_be_replaced_and_cleared(client: TestClient):
         response = client.patch(
             f"/jobs/{job_id}", json={"description": description}
         )
-        expected = {"id": job_id, **payload, "description": description}
+        expected = {"id": job_id, **payload, "description": description, "company": "WorkWise"}
         assert response.status_code == 200
         assert response.json() == expected
         assert client.get(f"/jobs/{job_id}").json() == expected
@@ -249,18 +261,18 @@ def test_patch_description_can_be_replaced_and_cleared(client: TestClient):
 
 @pytest.mark.parametrize("changes", [
     {"title": None},
-    {"company": None},
+    {"company_id": None},
     {"location": None},
     {"title": ""},
     {"description": 123},
     {"titel": "Misspelled field"},
 ])
 def test_patch_rejects_invalid_changes_without_modifying_job(
-    client: TestClient, changes: dict
+    client: TestClient, company_ids: dict[str, int], changes: dict
 ):
     payload = {
         "title": "Python Intern",
-        "company": "WorkWise",
+        "company_id": company_ids["WorkWise"],
         "location": "Remote",
         "description": "Keep this description",
     }
@@ -274,7 +286,7 @@ def test_patch_rejects_invalid_changes_without_modifying_job(
     assert client.get(f"/jobs/{job_id}").json() == created.json()
 
 
-def test_patch_missing_job_returns_404(client: TestClient):
+def test_patch_missing_job_returns_404(client: TestClient, company_ids: dict[str, int]):
     response = client.patch("/jobs/999", json={"title": "Python Developer"})
 
     assert response.status_code == 404
@@ -282,10 +294,10 @@ def test_patch_missing_job_returns_404(client: TestClient):
     assert client.get("/jobs").json() == []
 
 
-def test_empty_patch_leaves_job_unchanged(client: TestClient):
+def test_empty_patch_leaves_job_unchanged(client: TestClient, company_ids: dict[str, int]):
     created = client.post("/jobs", json={
         "title": "Python Intern",
-        "company": "WorkWise",
+        "company_id": company_ids["WorkWise"],
         "location": "Remote",
         "description": "Keep this description",
     })
@@ -299,12 +311,12 @@ def test_empty_patch_leaves_job_unchanged(client: TestClient):
     assert client.get(f"/jobs/{job_id}").json() == created.json()
 
 
-def test_get_jobs_supports_pagination(client: TestClient):
+def test_get_jobs_supports_pagination(client: TestClient, company_ids: dict[str, int]):
     created_jobs = []
     for title in ("Job A", "Job B", "Job C"):
         response = client.post("/jobs", json={
             "title": title,
-            "company": "WorkWise",
+            "company_id": company_ids["WorkWise"],
             "location": "Remote",
         })
         assert response.status_code == 201
@@ -332,9 +344,9 @@ def test_get_jobs_supports_pagination(client: TestClient):
     assert largest_page.json() == created_jobs
 
 
-def test_get_jobs_defaults_to_twenty_rows(client: TestClient, db_session: Session):
+def test_get_jobs_defaults_to_twenty_rows(client: TestClient, company_ids: dict[str, int], db_session: Session):
     jobs = [
-        Job(title=f"Job {number}", company="WorkWise", location="Remote")
+        Job(title=f"Job {number}", company_id=company_ids["WorkWise"], location="Remote")
         for number in range(21)
     ]
     db_session.add_all(jobs)
@@ -357,7 +369,7 @@ def test_get_jobs_defaults_to_twenty_rows(client: TestClient, db_session: Sessio
     {"offset": -1},
     {"offset": "abc"},
 ])
-def test_get_jobs_rejects_invalid_pagination(client: TestClient, params: dict):
+def test_get_jobs_rejects_invalid_pagination(client: TestClient, company_ids: dict[str, int], params: dict):
     response = client.get("/jobs", params=params)
 
     assert response.status_code == 422
@@ -365,7 +377,7 @@ def test_get_jobs_rejects_invalid_pagination(client: TestClient, params: dict):
     assert response.json()["detail"][0]["loc"] == ["query", parameter]
 
 
-def test_get_jobs_filters_by_company(client: TestClient):
+def test_get_jobs_filters_by_company(client: TestClient, company_ids: dict[str, int]):
     expected_jobs = []
     for title, company in [
         ("Python Intern", "WorkWise"),
@@ -374,7 +386,7 @@ def test_get_jobs_filters_by_company(client: TestClient):
     ]:
         created = client.post("/jobs", json={
             "title": title,
-            "company": company,
+            "company_id": company_ids[company],
             "location": "Remote",
         })
         assert created.status_code == 201
@@ -387,7 +399,7 @@ def test_get_jobs_filters_by_company(client: TestClient):
     assert response.json() == expected_jobs
 
 
-def test_company_filter_applies_before_pagination(client: TestClient):
+def test_company_filter_applies_before_pagination(client: TestClient, company_ids: dict[str, int]):
     matching_jobs = []
     for title, company in [
         ("Other A", "Example"),
@@ -397,7 +409,7 @@ def test_company_filter_applies_before_pagination(client: TestClient):
         ("Third match", "WorkWise"),
     ]:
         created = client.post("/jobs", json={
-            "title": title, "company": company, "location": "Remote",
+            "title": title, "company_id": company_ids[company], "location": "Remote",
         })
         assert created.status_code == 201
         if company == "WorkWise":
@@ -423,9 +435,9 @@ def test_company_filter_applies_before_pagination(client: TestClient):
     "WorkWise%",
     "' OR 1=1 --",
 ])
-def test_company_filter_requires_a_literal_exact_match(client: TestClient, company: str):
+def test_company_filter_requires_a_literal_exact_match(client: TestClient, company_ids: dict[str, int], company: str):
     created = client.post("/jobs", json={
-        "title": "Python Intern", "company": "WorkWise", "location": "Remote",
+        "title": "Python Intern", "company_id": company_ids["WorkWise"], "location": "Remote",
     })
     assert created.status_code == 201
 
@@ -436,15 +448,15 @@ def test_company_filter_requires_a_literal_exact_match(client: TestClient, compa
 
 
 def test_company_filter_accepts_quotes_and_wildcard_characters_literally(
-    client: TestClient,
+    client: TestClient, company_ids: dict[str, int],
 ):
     company = "O'Reilly %_ Labs"
     created = client.post("/jobs", json={
-        "title": "Python Intern", "company": company, "location": "Remote",
+        "title": "Python Intern", "company_id": company_ids[company], "location": "Remote",
     })
     assert created.status_code == 201
     other = client.post("/jobs", json={
-        "title": "Other job", "company": "OReilly Other Labs", "location": "Remote",
+        "title": "Other job", "company_id": company_ids["OReilly Other Labs"], "location": "Remote",
     })
     assert other.status_code == 201
 
@@ -454,7 +466,7 @@ def test_company_filter_accepts_quotes_and_wildcard_characters_literally(
     assert response.json() == [created.json()]
 
 
-def test_company_filter_rejects_an_empty_name(client: TestClient):
+def test_company_filter_rejects_an_empty_name(client: TestClient, company_ids: dict[str, int]):
     response = client.get("/jobs", params={"company": ""})
 
     assert response.status_code == 422

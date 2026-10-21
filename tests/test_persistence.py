@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from main import app
-from models import Job
+from models import Company, Job
 
 
 def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
@@ -15,7 +15,6 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
     marker = f"Persistence check {uuid4()}"
     payload = {
         "title": marker,
-        "company": "Test Company",
         "location": "Remote",
         "description": "Initial persistent description",
     }
@@ -29,6 +28,9 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
 
     try:
         with TestClient(app) as client:
+            company = client.post("/companies", json={"name": marker})
+            assert company.status_code == 201
+            payload["company_id"] = company.json()["id"]
             response = client.post("/jobs", json=payload)
             assert response.status_code == 201
             job_id = response.json()["id"]
@@ -78,3 +80,4 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
         # Remove only this test's uniquely marked row, even if an assertion failed.
         with test_engine.begin() as connection:
             connection.execute(delete(Job).where(Job.title == marker))
+            connection.execute(delete(Company).where(Company.name == marker))

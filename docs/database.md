@@ -6,6 +6,8 @@
    `JobUpdate` in `schemas.py`.
 2. `Depends(get_db)` supplies a session for the request.
 3. Endpoints in `main.py` query or modify `Job` objects mapped to `public.jobs`.
+   Each job references `companies.id`; its company name is read through an ORM
+   relationship, joined eagerly when loading jobs.
 4. Write endpoints commit their transaction; create/update refresh the object.
 5. `JobRead` reads object attributes and defines the response's public fields.
 6. The dependency closes the session after the request, including error paths.
@@ -23,18 +25,22 @@ timeouts beyond connection establishment, and error logging need later work.
 | `GET /jobs` | Page of jobs, optionally filtered by company, ordered by ID | 200 | Empty list |
 | `GET /jobs/{job_id}` | Retrieve a job | 200 | 404 |
 | `POST /jobs` | Create with database-generated ID | 201 | n/a |
-| `PUT /jobs/{job_id}` | Replace title, company, location, description | 200 | 404 |
+| `PUT /jobs/{job_id}` | Replace title, company_id, location, description | 200 | 404 |
 | `PATCH /jobs/{job_id}` | Update only supplied fields | 200 | 404 |
 | `DELETE /jobs/{job_id}` | Delete a job, empty body | 204 | 404 |
 
-Create and PUT require nonempty strings for title, company, and location.
+Create and PUT require nonempty title/location and a positive integer
+`company_id` referring to an existing company. A missing company returns 404
+before fields are changed. POST/PUT/PATCH reject unknown request keys, including
+the former `company` text key. Responses retain read-only `company` name text
+and add `company_id`.
 Description is optional text, defaulting to null. It may be omitted or supplied
 as null. All job responses include a description field. A full-replacement PUT
 omitting description clears the previous value to null. This additive response
 field is the intentional API change introduced in the description checkpoint.
 PATCH uses `model_dump(exclude_unset=True)` so omitted fields retain their
 stored values. Explicit `description: null` clears description. Explicit nulls
-for title/company/location and empty strings for these fields return 422.
+for title/company_id/location, empty title/location, and invalid company IDs return 422.
 Unknown PATCH fields also return 422, preventing misspelled fields or ID updates
 from silently succeeding. An empty PATCH body is a successful no-op for an
 existing job. A valid PATCH body targeting an absent job returns 404.
@@ -68,7 +74,7 @@ Tests also cover valid bounds, default page size with 21 stored jobs, offsets
 beyond the end, and invalid parameters. This endpoint required no schema change.
 
 Optional `company` query input adds an exact, case-sensitive equality condition
-using `where(Job.company == company)`. Company is not trimmed, normalized, or
+using a relationship predicate on `Company.name`. Company is not trimmed, normalized, or
 interpreted as a pattern. Omission means all companies; empty text is rejected
 with 422. No matches produce an empty array. Existing company values containing
 quotes, percent signs, or underscores can be selected literally.
@@ -80,9 +86,11 @@ this behavior with normal names, missing/partial/case-different names,
 wildcard characters, and a SQL-like string. This does not replace future
 authentication and authorization work.
 
-No database schema change or company index was introduced. An index should be
-evaluated using measured data and query plans. No query performance benchmark
-has been recorded for this checkpoint.
+The original pagination/filter checkpoint required no schema change. Revision
+0004 later adds the relationship and `ix_jobs_company_id` index. The optional
+`company_id` query parameter filters on that column; supplying both name and ID
+requires both to match before ordering and pagination. No query performance
+benchmark has been recorded, so the index is not a measured speedup claim.
 
 ## Data and schema
 
@@ -97,11 +105,16 @@ to `b1e18f4fbb2e` to add nullable description text. Tests now upgrade their own
 database with Alembic too, replacing metadata-based table creation.
 See [migration setup and verification](migrations.md).
 
-Revision `0003` additionally creates the companies table. Its create/read
+Revision `0003` creates the companies table. Its create/read
 routes live in `routers/companies.py` and translate the named unique-company
-constraint violation to 409 after rolling back the failed transaction. Jobs
-still store company text independently; no foreign key or backfill has been
-applied. See [Company APIs and constraints](companies.md).
+constraint violation to 409 after rolling back the failed transaction. Revision
+`0004` backfills distinct existing job company names, reuses exact existing
+Company names, and replaces the job text column with a required foreign key.
+Deleting a referenced company is restricted at the database level. The ORM
+uses the connection's default `public` schema for both models and foreign keys,
+matching PostgreSQL's reflected default-schema names during Alembic comparison.
+Migrations still explicitly target `public`.
+See [Company APIs and constraints](companies.md).
 
 ## PATCH learning checkpoint
 

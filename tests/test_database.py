@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from models import Job
+from models import Company, Job
 
 
 @pytest.mark.parametrize("title", ["First test job", "Second test job"])
@@ -11,7 +11,7 @@ def test_committed_job_does_not_leak_between_tests(
 ) -> None:
     assert db_session.scalar(select(func.count()).select_from(Job)) == 0
 
-    job = Job(title=title, company="Test Company", location="Remote")
+    job = Job(title=title, employer=Company(name="Test Company"), location="Remote")
     db_session.add(job)
     db_session.commit()
 

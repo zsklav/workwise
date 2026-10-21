@@ -8,8 +8,8 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 66 cases covering job and company APIs backed by
-PostgreSQL, database constraints, transaction isolation, and independent-connection
+The current suite has 103 cases covering job and company APIs backed by
+PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job persistence. All job and company endpoints use PostgreSQL.
 
 ## PostgreSQL setup
@@ -91,9 +91,23 @@ after a conflict, invalid bodies, missing/invalid IDs, pagination, and keeping
 jobs unchanged. A direct ORM insert also verifies the database unique constraint.
 These cases use rollback fixtures; they do not simulate concurrent inserts.
 
+Job-company cases verify reassignment through PUT/PATCH, matching name and ID
+filters before pagination, rejecting missing/invalid company references and old
+text write keys without changing jobs, rejecting direct foreign-key/null
+violations, restricting company deletion while linked, and keeping companies
+when jobs are deleted. The independent-connection job case now creates its own
+uniquely marked company and cleans it up after removing its job.
+
+Migration tests temporarily downgrade the test schema to 0003 inside an outer
+transaction, seed legacy rows, and apply 0004. They verify exact name matching,
+existing-company reuse and description preservation, multiple jobs sharing a
+company, case/whitespace/quote preservation, and downgrade restoration. Invalid
+legacy names abort before schema/data changes. All these DDL/data changes are
+rolled back at teardown; the development database is never downgraded.
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -v --tb=short` completed with **66 passed**
+On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **103 passed**
 against local PostgreSQL, including job CRUD and company create/read endpoints. The command was run
 with access to the local database server outside the restricted agent sandbox.
 
