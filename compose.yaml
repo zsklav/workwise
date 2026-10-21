@@ -10,7 +10,7 @@ services:
   notification-migrate:
     image: workwise-api:local
     build: .
-    command: ["python", "scripts/migrate_notifications.py"]
+    command: ["python", "-m", "scripts.database.migrate_notifications"]
     environment:
       NOTIFICATION_ADMIN_PASSWORD: ${NOTIFICATION_ADMIN_PASSWORD:?Generate .env.docker first}
       NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
@@ -22,7 +22,7 @@ services:
   notification-api:
     image: workwise-api:local
     build: .
-    command: ["python", "-m", "uvicorn", "notifications.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    command: ["python", "-m", "uvicorn", "workwise.notifications.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     environment:
       NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
       NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:?Add missing .env.docker keys}
@@ -74,7 +74,7 @@ services:
   publisher:
     image: workwise-api:local
     build: .
-    command: ["python", "-m", "messaging.publisher"]
+    command: ["python", "-m", "workwise.messaging.publisher"]
     environment:
       DB_HOST: db
       DB_NAME: workwise
@@ -88,7 +88,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-m", "messaging.health"]
+      test: ["CMD", "python", "-m", "workwise.messaging.health"]
       interval: 10s
       timeout: 5s
       start_period: 15s
@@ -102,7 +102,7 @@ services:
   notification-worker:
     image: workwise-api:local
     build: .
-    command: ["python", "-m", "messaging.worker"]
+    command: ["python", "-m", "workwise.messaging.worker"]
     environment:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Generate .env.docker first}
@@ -115,7 +115,7 @@ services:
       notification-migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-m", "messaging.health"]
+      test: ["CMD", "python", "-m", "workwise.messaging.health"]
       interval: 10s
       timeout: 5s
       start_period: 15s
@@ -148,7 +148,7 @@ services:
   migrate:
     image: workwise-api:local
     build: .
-    command: ["python", "scripts/migrate.py"]
+    command: ["python", "-m", "scripts.database.migrate"]
     environment:
       DB_HOST: db
       DB_NAME: workwise
@@ -165,7 +165,7 @@ services:
     image: workwise-api:local
     build: .
     profiles: [tools]
-    command: ["python", "manage_users.py", "create-admin", "workwise_admin"]
+    command: ["python", "-m", "workwise.cli.manage_users", "create-admin", "workwise_admin"]
     environment:
       DB_HOST: db
       DB_NAME: workwise

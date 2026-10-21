@@ -1,0 +1,125 @@
+"""Job CRUD routes and their transaction/ownership checks."""
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, Response
+from psycopg.errors import ForeignKeyViolation
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from workwise.api.dependencies import DbSession
+from workwise.api.schemas import JobCreate, JobRead, JobUpdate
+from workwise.core.security import CurrentUser, require_company_access
+from workwise.core.tracing import capture_context
+from workwise.db.models import Company, Job, OutboxEvent
+from workwise.messaging.events import job_created
+
+router = APIRouter()
+
+
+def require_company(company_id: int, db: Session, user) -> None:
+    company = db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    require_company_access(company, user)
+
+
+def commit_job(job: Job, db: Session, *, recipient_id: int | None = None) -> None:
+    try:
+        if recipient_id is not None:
+            db.flush()
+            event = job_created(job.id, job.company_id, recipient_id)
+            db.add(OutboxEvent(id=event.event_id, payload=event.model_dump(mode="json"),
+                               created_at=event.occurred_at, trace_context=capture_context()))
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        if (
+            isinstance(error.orig, ForeignKeyViolation)
+            and error.orig.diag.constraint_name == "fk_jobs_company_id_companies"
+        ):
+            raise HTTPException(status_code=404, detail="Company not found") from error
+        raise
+    db.refresh(job)
+
+
+@router.get("/jobs", response_model=list[JobRead])
+def get_jobs(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    company: Annotated[
+        str | None, Query(min_length=1, description="Exact company name, case-sensitive")
+    ] = None,
+    company_id: Annotated[int | None, Query(gt=0)] = None,
+) -> list[Job]:
+    statement = select(Job).order_by(Job.id)
+    if company is not None:
+        statement = statement.where(Job.employer.has(Company.name == company))
+    if company_id is not None:
+        statement = statement.where(Job.company_id == company_id)
+    statement = statement.offset(offset).limit(limit)
+    return list(db.scalars(statement).all())
+
+
+@router.get("/jobs/{job_id}", response_model=JobRead)
+def get_job(job_id: int, db: DbSession) -> Job:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/jobs", status_code=201, response_model=JobRead)
+def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
+    require_company(job.company_id, db, user)
+    new_job = Job(**job.model_dump())
+    db.add(new_job)
+    commit_job(new_job, db, recipient_id=user.id)
+    return new_job
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+def delete_job(job_id: int, db: DbSession, user: CurrentUser) -> Response:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    require_company_access(job.employer, user)
+    db.delete(job)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.put("/jobs/{job_id}", response_model=JobRead)
+def update_job(job_id: int, updated_job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    require_company_access(job.employer, user)
+    require_company(updated_job.company_id, db, user)
+    job.title = updated_job.title
+    job.company_id = updated_job.company_id
+    job.location = updated_job.location
+    job.description = updated_job.description
+    commit_job(job, db)
+    return job
+
+
+@router.patch("/jobs/{job_id}", response_model=JobRead)
+def patch_job(job_id: int, updated_job: JobUpdate, db: DbSession, user: CurrentUser) -> Job:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    require_company_access(job.employer, user)
+    changes = updated_job.model_dump(exclude_unset=True)
+    if "company_id" in changes:
+        require_company(changes["company_id"], db, user)
+    if changes:
+        for field, value in changes.items():
+            setattr(job, field, value)
+        commit_job(job, db)
+
+    return job

@@ -56,12 +56,12 @@ jobs:
       - name: Bootstrap isolated databases and roles
         run: bash docker/postgres/init.sh
       - name: Apply fresh migrations and grants
-        run: python scripts/migrate.py
+        run: python -m scripts.database.migrate
       - name: Check dependency and schema consistency
         run: |
           python -m pip check
           python -m alembic check
-          python -c "from database import engine; from sqlalchemy import text; connection = engine.connect(); connection.execute(text('SELECT version_num FROM public.alembic_version')); connection.close()"
+          python -c "from workwise.db.session import engine; from sqlalchemy import text; connection = engine.connect(); connection.execute(text('SELECT version_num FROM public.alembic_version')); connection.close()"
       - name: Run PostgreSQL tests
         run: python -m pytest -q --tb=short
 
@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Generate disposable credentials
-        run: python3 scripts/create_docker_env.py
+        run: python3 -m scripts.docker.create_env
       - name: Validate Compose
         run: docker compose --env-file .env.docker config --quiet
       - name: Build and start isolated stack
@@ -80,11 +80,11 @@ jobs:
         run: |
           docker compose --env-file .env.docker exec -T api python -c "import os; assert os.getuid() == 10001; assert 'MIGRATION_DB_PASSWORD' not in os.environ; assert 'POSTGRES_PASSWORD' not in os.environ"
       - name: Smoke test through HTTP
-        run: python3 scripts/smoke_test.py
+        run: python3 -m scripts.smoke.api
       - name: Exercise broker and worker failure recovery
-        run: python3 scripts/distributed_smoke.py --allow-service-interruption
+        run: python3 -m scripts.smoke.distributed --allow-service-interruption
       - name: Verify inbox workflow and exported distributed traces
-        run: python3 scripts/notification_smoke.py --allow-service-interruption
+        run: python3 -m scripts.smoke.notifications --allow-service-interruption
       - name: Show API and migration diagnostics on failure
         if: failure()
         run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db notification-migrate notification-api jaeger

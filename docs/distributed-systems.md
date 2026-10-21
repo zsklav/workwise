@@ -65,7 +65,7 @@ Docker Desktop's Linux engine must be running. The native API may remain on 8000
 Docker uses 8001 and separate database volumes.
 
 ```powershell
-python scripts/create_docker_env.py --add-missing
+python -m scripts.docker.create_env --add-missing
 docker compose --env-file .env.docker up --build --detach --wait --wait-timeout 180
 docker compose --env-file .env.docker logs --follow publisher notification-worker
 ```
@@ -90,7 +90,7 @@ and `workwise.notifications.dead.v1`. No database or AMQP host port is exposed.
 On a **disposable demo stack**, run:
 
 ```powershell
-python scripts/distributed_smoke.py --allow-service-interruption
+python -m scripts.smoke.distributed --allow-service-interruption
 ```
 
 This intentionally stops/restarts the worker, broker and notification database.
@@ -111,7 +111,7 @@ After fixing a failed dependency, replay one **valid** event selected from the
 DLQ. Replace the example UUID with its real event ID:
 
 ```powershell
-docker compose --env-file .env.docker exec publisher python -m messaging.replay --event-id 00000000-0000-0000-0000-000000000000
+docker compose --env-file .env.docker exec publisher python -m workwise.messaging.replay --event-id 00000000-0000-0000-0000-000000000000
 ```
 
 Replay scans at most 100 ready DLQ messages (adjust `--limit` up to 1000), publishes

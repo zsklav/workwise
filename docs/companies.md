@@ -79,10 +79,10 @@ Job lists support an exact company-name filter and a positive `company_id`
 filter. Both supplied together must match. Filtering precedes pagination.
 The foreign key column has index `ix_jobs_company_id`; no speedup was measured.
 
-Routes use `APIRouter` in `routers/companies.py`, registered in `main.py`.
+Routes use `APIRouter` in `workwise/api/routes/companies.py`, registered in `workwise/api/main.py`.
 Each request receives a database session through the existing `get_db`
-dependency. Company request/response schemas are in `schemas.py` and the ORM
-mapping is in `models.py`.
+dependency. Company request/response schemas are in `workwise/api/schemas.py` and the ORM
+mapping is in `workwise/db/models.py`.
 
 ## Setup and verification
 

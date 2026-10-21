@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from alembic import command
@@ -10,10 +9,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, create_engine, func, inspect, select, text
 from sqlalchemy.orm import Session
 
-from database import database_url, get_db
-from main import app
-from models import Base, Company, Job, User, OutboxEvent
-from security import create_access_token, password_hasher
+from workwise.db.session import database_url, get_db
+from workwise.api.main import app
+from workwise.db.models import Base, Company, Job, User, OutboxEvent
+from workwise.core.security import create_access_token, password_hasher
+
+from workwise.core.paths import ROOT_DIR
 
 
 TEST_PASSWORD = "test password for WorkWise 2026"
@@ -44,7 +45,7 @@ def test_engine() -> Iterator[Engine]:
                     "Unversioned test schema: verify and baseline it before running tests."
                 )
 
-            config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+            config = Config(str(ROOT_DIR / "alembic.ini"))
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 

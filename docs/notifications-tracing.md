@@ -88,7 +88,7 @@ existing volumes both use the same v1-to-v2 migration.
 For an existing Docker stack, keep volumes and current credentials:
 
 ```powershell
-python scripts/create_docker_env.py --add-missing
+python -m scripts.docker.create_env --add-missing
 docker compose --env-file .env.docker stop api publisher notification-worker notification-api
 docker compose --env-file .env.docker build
 docker compose --env-file .env.docker run --rm migrate
@@ -134,7 +134,7 @@ system. There is no automatic SQL instrumentation or body/header capture.
 
 ```powershell
 python -m pytest -q --tb=short
-python scripts/notification_smoke.py --allow-service-interruption
+python -m scripts.smoke.notifications --allow-service-interruption
 ```
 
 The second command is for a **disposable Docker demo/CI stack**: it creates two

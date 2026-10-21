@@ -64,7 +64,7 @@ fixture. The former in-memory `fresh_jobs` fixture has been removed.
 These rollback fixtures support sequential requests in each test. They do not
 validate concurrent request behavior or persistence across server restarts.
 
-`tests/test_persistence.py` separately verifies real API commits: it creates,
+`tests/db/test_persistence.py` separately verifies real API commits: it creates,
 updates, and deletes a job, checking each result through an independent
 connection to `workwise_test`. It uses fresh sessions without the outer
 rollback transaction. A unique title identifies its row for cleanup if an

@@ -71,7 +71,7 @@ unowned and are manageable only by admins. No default accounts, passwords, or
 first-signup promotion are created. After migration and local configuration:
 
 ```powershell
-python manage_users.py create-admin workwise_admin
+python -m workwise.cli.manage_users create-admin workwise_admin
 ```
 
 This local operator command uses migration credentials and prompts with

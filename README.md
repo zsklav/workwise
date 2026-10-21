@@ -108,26 +108,28 @@ erDiagram
 ```
 
 ```text
-main.py                App and job endpoints
-routers/companies.py   Company CRUD endpoints
-routers/auth.py        Signup, login, and current-user endpoints
-security.py            Password hashing, JWT verification, and ownership checks
-observability.py       Request context, JSON logs, and HTTP metrics middleware
-manage_users.py        Local administrator creation command
-schemas.py             Request and response models
-models.py              SQLAlchemy table mappings
-database.py            Shared engine and session dependency
-settings.py            Environment configuration
-migrations/            Versioned schema changes
-tests/                 API, transaction, and persistence tests
-docs/                  Database, migration, and testing notes
-check_db.py            Read-only database connection check
-baseline_db.py         Historical initial-schema adoption helper
-Dockerfile             Non-root Python API image
-compose.yaml           Isolated database, migrations, API, and admin tool
-scripts/               Docker credential generation, migration runner, CI smoke test
-.github/workflows/     PostgreSQL regression tests and container verification
+workwise/                    Application package
+  api/                       FastAPI assembly, dependencies, schemas
+    routes/                  Auth, companies, jobs, notifications, operations
+  core/                      Configuration, security, logging, tracing
+  db/                        Jobs database models and sessions
+  messaging/                 Broker, events, publisher, worker, DLQ replay
+  notifications/             Internal inbox API, contracts, storage, migration
+  cli/                       Admin creation and database inspection tools
+scripts/
+  database/                  Jobs and notification migration runners
+  docker/                    Private Docker configuration helper
+  smoke/                     HTTP, distributed recovery, inbox/tracing demos
+tests/                       Grouped to match application responsibilities
+migrations/                  Jobs Alembic history
+docker/                      PostgreSQL initialization scripts
+docs/                        Architecture, operations and learning notes
+.github/workflows/           PostgreSQL and Docker CI
+main.py                      Compatibility entry point
+Dockerfile, compose.yaml     Container build and local stack
 ```
+
+See [project structure](docs/project-structure.md) for module responsibilities and commands.
 
 ## Docker setup
 
@@ -135,11 +137,11 @@ Install/start Docker Desktop with Linux containers first. On a fresh clone,
 generate a separate private configuration once, then start the stack:
 
 ```powershell
-python scripts/create_docker_env.py
+python -m scripts.docker.create_env
 docker compose --env-file .env.docker up --build --detach --wait
 ```
 
-If `.env.docker` already exists, run `python scripts/create_docker_env.py --add-missing`
+If `.env.docker` already exists, run `python -m scripts.docker.create_env --add-missing`
 to append new broker/worker keys while preserving existing credentials.
 For an already-running stack, follow the [controlled inbox/tracing upgrade](docs/notifications-tracing.md#schema-upgrades-and-rollout)
 to stop old consumers before enabling v2 events.
@@ -243,14 +245,14 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.outbox_events TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
-upgrades. Do not blindly stamp an unknown database. `baseline_db.py` documents
+upgrades. Do not blindly stamp an unknown database. `workwise/cli/baseline_db.py` documents
 the project's original adoption of revision `0001`; it is not a generic reset
 or initialization command. See [migration notes](docs/migrations.md).
 
 ### Start the API
 
 ```powershell
-python -m uvicorn main:app --reload --no-access-log
+python -m uvicorn workwise.api.main:app --reload --no-access-log
 ```
 
 - API docs: <http://127.0.0.1:8000/docs>
@@ -312,7 +314,7 @@ Only admins may manage those legacy records. Signup cannot claim a legacy
 company or grant admin privileges. To create your first admin locally:
 
 ```powershell
-python manage_users.py create-admin workwise_admin
+python -m workwise.cli.manage_users create-admin workwise_admin
 ```
 
 The command uses migration credentials, prompts privately for a password and
@@ -456,6 +458,7 @@ live deployment remain deferred.
 
 ## Engineering notes
 
+- [Project structure and entry points](docs/project-structure.md)
 - [Database behavior and API contracts](docs/database.md)
 - [Company APIs and database constraints](docs/companies.md)
 - [Authentication, roles, and ownership](docs/auth.md)

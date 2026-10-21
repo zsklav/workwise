@@ -15,11 +15,11 @@ On 2026-10-21:
 - `alembic upgrade head --sql` successfully rendered its SQL without applying it.
 - Migration-role login, jobs ownership, and schema creation permissions were
   verified before baselining.
-- `baseline_db.py` recorded revision `0001` in one transaction after validating
+- `workwise/cli/baseline_db.py` recorded revision `0001` in one transaction after validating
   the schema and comparing before/after snapshots of the two existing rows.
 - After initial adoption, `alembic current` reported `0001 (head)`.
 - `alembic check` reports `No new upgrade operations detected.`
-- `check_db.py` confirmed the runtime user can still read both existing jobs.
+- `workwise/cli/check_db.py` confirmed the runtime user can still read both existing jobs.
 
 The existing jobs table and rows were preserved. Alembic's version table was
 created to record the baseline.
@@ -33,7 +33,7 @@ without recreating the table. Stamping does not itself check schema correctness.
 The existing development database was first stamped at `0001`, then upgraded
 to the description revision described below.
 
-`baseline_db.py` performs the initial adoption only: it verifies the role,
+`workwise/cli/baseline_db.py` performs the initial adoption only: it verifies the role,
 ownership, schema privileges, model/schema match, and expected starting
 revision. A short SHARE lock prevents concurrent writes/DDL while the helper
 compares existing rows and stamps through a shared Alembic connection. The
@@ -174,7 +174,7 @@ were seeded. Schema comparison and `alembic check` found no pending operations.
 
 Runtime SELECT/INSERT on users was granted separately; user UPDATE/DELETE was
 not granted. Trusted local admin creation uses migration credentials via
-`manage_users.py create-admin`. Signup always creates members. Runtime signup,
+`workwise/cli/manage_users.py create-admin`. Signup always creates members. Runtime signup,
 login, bearer authentication, owned writes, denied legacy writes, and linked
 deletion conflicts were verified in an outer rollback transaction. Temporary
 users and data were rolled back, and existing snapshots were unchanged.

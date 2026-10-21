@@ -25,13 +25,13 @@ The database has no host port mapping. Compose service DNS uses host `db`;
 native host `localhost` is not used for container connections. Project name
 `workwise-docker` gives its named volume an independent namespace.
 
-`scripts/create_docker_env.py` creates ignored `.env.docker` using random
+`scripts/docker/create_env.py` creates ignored `.env.docker` using random
 credentials without printing values. It never reads/copies native `.env` and
 refuses to overwrite an existing file. `.env.docker.example` documents variable
 names only. Always pass `--env-file .env.docker`; this avoids using the native
 credentials for Compose interpolation.
 
-For an existing config, `python scripts/create_docker_env.py --add-missing`
+For an existing config, `python -m scripts.docker.create_env --add-missing`
 appends new broker/notification keys without changing existing values. See
 [distributed event processing](distributed-systems.md) for failure demos and replay.
 
@@ -76,7 +76,7 @@ stack, with cloud TLS/secrets/backups and deployment rollout still pending.
 Run these from the repository root with Docker Desktop's Linux engine running:
 
 ```powershell
-python scripts/create_docker_env.py
+python -m scripts.docker.create_env
 docker compose --env-file .env.docker up --build --detach --wait
 docker compose --env-file .env.docker ps
 ```
@@ -92,7 +92,7 @@ The admin service is in a tools profile and does not start during normal `up`.
 To choose another new admin username, override its command:
 
 ```powershell
-docker compose --env-file .env.docker run --rm admin python manage_users.py create-admin another_admin
+docker compose --env-file .env.docker run --rm admin python -m workwise.cli.manage_users create-admin another_admin
 ```
 
 For a code/schema upgrade, stop API writes before applying migrations:
@@ -124,7 +124,7 @@ with read-only repository permission and a timeout on each job. It has two jobs:
   It also runs broker/worker outage tests, recipient inbox isolation/read tests,
   verifies exported cross-service traces, and tests inbox/collector outages.
 
-`scripts/smoke_test.py` is for disposable CI stacks. It creates a random member
+`scripts/smoke/api.py` is for disposable CI stacks. It creates a random member
 account and cleans up its company/job through the API. The account itself
 remains until the disposable volume is removed; do not run it against personal
 or production data expecting a complete account cleanup.
