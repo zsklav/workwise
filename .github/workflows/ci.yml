@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: ci-only-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPASSWORD: ci-only-postgres-password
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      DB_HOST: 127.0.0.1
+      DB_NAME: workwise
+      DB_USER: workwise_app
+      DB_PASSWORD: ci-only-runtime-password
+      MIGRATION_DB_USER: workwise_migrator
+      MIGRATION_DB_PASSWORD: ci-only-migration-password
+      JWT_SECRET: ci-only-signing-key-for-disposable-tests-never-use-outside-the-runner
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Bootstrap isolated databases and roles
+        run: bash docker/postgres/init.sh
+      - name: Apply fresh migrations and grants
+        run: python scripts/migrate.py
+      - name: Check dependency and schema consistency
+        run: |
+          python -m pip check
+          python -m alembic check
+      - name: Run PostgreSQL tests
+        run: python -m pytest -q --tb=short
+
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Generate disposable credentials
+        run: python3 scripts/create_docker_env.py
+      - name: Validate Compose
+        run: docker compose --env-file .env.docker config --quiet
+      - name: Build and start isolated stack
+        run: docker compose --env-file .env.docker up --build --detach --wait --wait-timeout 180
+      - name: Verify runtime user and credential separation
+        run: |
+          docker compose --env-file .env.docker exec -T api python -c "import os; assert os.getuid() == 10001; assert 'MIGRATION_DB_PASSWORD' not in os.environ; assert 'POSTGRES_PASSWORD' not in os.environ"
+      - name: Smoke test through HTTP
+        run: python3 scripts/smoke_test.py
+      - name: Stop disposable stack
+        if: always()
+        run: docker compose --env-file .env.docker down --volumes

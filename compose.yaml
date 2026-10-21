@@ -1,0 +1,83 @@
+name: workwise-docker
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env.docker first}
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Generate .env.docker first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-workwise.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    image: workwise-api:local
+    build: .
+    command: ["python", "scripts/migrate.py"]
+    environment:
+      DB_HOST: db
+      DB_NAME: workwise
+      DB_USER: workwise_app
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      MIGRATION_DB_USER: workwise_migrator
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Generate .env.docker first}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  admin:
+    image: workwise-api:local
+    build: .
+    profiles: [tools]
+    command: ["python", "manage_users.py", "create-admin", "workwise_admin"]
+    environment:
+      DB_HOST: db
+      DB_NAME: workwise
+      DB_USER: workwise_app
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      MIGRATION_DB_USER: workwise_migrator
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Generate .env.docker first}
+      JWT_SECRET: ${JWT_SECRET:?Generate .env.docker first}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stdin_open: true
+    tty: true
+    restart: "no"
+
+  api:
+    image: workwise-api:local
+    build: .
+    environment:
+      DB_HOST: db
+      DB_NAME: workwise
+      DB_USER: workwise_app
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      JWT_SECRET: ${JWT_SECRET:?Generate .env.docker first}
+    ports:
+      - "127.0.0.1:${API_PORT:-8001}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

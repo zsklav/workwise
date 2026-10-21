@@ -25,12 +25,15 @@ The project was built from scratch; no Java migration is included.
 - OpenAPI documentation at `/docs`.
 - Signup/login with Argon2 password hashing and expiring JWT bearer tokens.
 - Member/admin roles, company ownership, and authorization for every write.
+- Docker image and Compose stack with an isolated PostgreSQL volume and migration service.
+- GitHub Actions for PostgreSQL tests, image build, and HTTP container smoke tests.
+- Database/schema readiness at `/ready`, separate from process health at `/health`.
 
 Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
-Messaging, containers, and deployment are still planned.
+Messaging and live deployment are still planned.
 
 ## Stack
 
@@ -101,7 +104,45 @@ tests/                 API, transaction, and persistence tests
 docs/                  Database, migration, and testing notes
 check_db.py            Read-only database connection check
 baseline_db.py         Historical initial-schema adoption helper
+Dockerfile             Non-root Python API image
+compose.yaml           Isolated database, migrations, API, and admin tool
+scripts/               Docker credential generation, migration runner, CI smoke test
+.github/workflows/     PostgreSQL regression tests and container verification
 ```
+
+## Docker setup
+
+Install/start Docker Desktop with Linux containers first. On a fresh clone,
+generate a separate private configuration once, then start the stack:
+
+```powershell
+python scripts/create_docker_env.py
+docker compose --env-file .env.docker up --build --detach --wait
+```
+
+If `.env.docker` already exists, skip generation; the script refuses to overwrite
+credentials. Docker uses a fresh database/volume, independent of the native
+PostgreSQL setup below. Existing local jobs are not copied into it. Your native
+API can keep using port 8000; Docker docs are at <http://127.0.0.1:8001/docs>.
+
+Compose waits for PostgreSQL health, runs migrations and runtime grants, then
+starts the API as UID 10001. The API receives runtime credentials only; migration
+credentials are restricted to operator services. To create a Docker admin:
+
+```powershell
+docker compose --env-file .env.docker run --rm admin
+```
+
+The tool privately prompts for a password for `workwise_admin`. Signup/Authorize
+also work normally for members in this fresh stack. To stop while retaining data:
+
+```powershell
+docker compose --env-file .env.docker down
+```
+
+Keep `.env.docker` together with the volume: initialization passwords only apply
+when the PostgreSQL volume is empty. See [Docker and CI notes](docs/docker-ci.md)
+for upgrades, isolation, and verification details.
 
 ## Local setup
 
@@ -205,6 +246,7 @@ permission on both its current company and destination company.
 | Method | Path | Purpose | Success |
 |---|---|---|---|
 | GET | `/health` | Process health | 200 |
+| GET | `/ready` | Database reachable and at the expected schema revision | 200 |
 | GET | `/jobs` | List a page of jobs in ID order | 200 |
 | GET | `/jobs/{job_id}` | Retrieve a job | 200 |
 | POST | `/jobs` | Create a job | 201 |
@@ -344,8 +386,13 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified checkpoint: **201 tests passed** on 2026-10-21. The learner also
+Last verified local checkpoint: **204 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
+
+GitHub [CI runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml) on
+pushes/PRs to main and manual dispatch. One job tests a fresh PostgreSQL setup;
+another builds the image and verifies the Compose stack through real HTTP.
+No image publication or live deployment occurs in this workflow.
 
 ## Current scope and next steps
 
@@ -355,7 +402,8 @@ limits, and version-based concurrency conflict detection remain future work.
 Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Next: packaging, CI, and deployment. Messaging, resilience, and
+Docker and CI configuration are implemented. Next: live deployment when a
+hosting target is selected. Messaging, resilience, and
 distributed tracing will follow concrete business workflows.
 
 ## Engineering notes
@@ -363,5 +411,6 @@ distributed tracing will follow concrete business workflows.
 - [Database behavior and API contracts](docs/database.md)
 - [Company APIs and database constraints](docs/companies.md)
 - [Authentication, roles, and ownership](docs/auth.md)
+- [Docker runtime and CI](docs/docker-ci.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

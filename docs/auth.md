@@ -87,7 +87,7 @@ work; this checkpoint is verified locally and is not a production security audit
 
 ## Verification
 
-The PostgreSQL suite has 201 passing cases, including real signup/login,
+The PostgreSQL suite has 204 passing cases, including real signup/login,
 password hash verification, malformed/expired/incorrectly signed JWT rejection,
 role-claim rejection as an authority source, disabled accounts, all unauthenticated
 write routes, cross-owner write denial, both sides of job movement, administrator

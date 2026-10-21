@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 201 cases covering auth, job, and company APIs backed by
+The current suite has 204 cases covering readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -140,9 +140,15 @@ destination companies during job moves, immutable owner/role input, admin
 access, and legacy admin-only records. Role comes from the current database row,
 including when a signed token contains an extra admin role claim.
 
+Readiness cases verify the actual migrated test database, reject a deliberately
+stale revision inside a rollback transaction, and return generic 503 on database
+failure while `/health` remains available. GitHub CI additionally bootstraps
+fresh databases, verifies migration grants, and builds/runs the Docker stack
+through an HTTP smoke test. See [Docker/CI verification](docker-ci.md).
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **201 passed**
+On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **204 passed**
 against local PostgreSQL, including auth and job/company CRUD. The command was run
 with access to the local database server outside the restricted agent sandbox.
 

@@ -1,11 +1,14 @@
 from typing import Annotated
+from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from psycopg.errors import ForeignKeyViolation
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -21,6 +24,7 @@ app.include_router(companies_router)
 app.include_router(auth_router)
 
 DbSession = Annotated[Session, Depends(get_db)]
+schema_head = ScriptDirectory.from_config(Config(str(Path(__file__).resolve().with_name("alembic.ini")))).get_current_head()
 
 
 @app.exception_handler(RequestValidationError)
@@ -57,6 +61,17 @@ def commit_job(job: Job, db: Session) -> None:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "OK"}
+
+
+@app.get("/ready")
+def readiness(db: DbSession) -> dict[str, str]:
+    try:
+        revisions = tuple(db.scalars(text("SELECT version_num FROM public.alembic_version")))
+    except SQLAlchemyError:
+        raise HTTPException(status_code=503, detail="Database not ready") from None
+    if revisions != (schema_head,):
+        raise HTTPException(status_code=503, detail="Database migrations not ready")
+    return {"status": "ready"}
 
 
 @app.get("/jobs", response_model=list[JobRead])
