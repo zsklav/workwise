@@ -149,6 +149,15 @@ removes the foreign key/index/ID column, and retains Company rows. It does not
 recover historical company names after future renames. Downgrade was tested
 inside rollback transactions in `workwise_test`, and was not run on development.
 
+## Company update/delete permissions
+
+The company PUT/PATCH/DELETE checkpoint required no schema changes: revision
+0004 already supplies the unique-name and restricted-delete constraints.
+On 2026-10-21, UPDATE and DELETE on `public.companies` were granted to the
+runtime role separately from Alembic. Existing SELECT/INSERT permissions remain.
+Fresh installations should use the complete company CRUD grant in the README.
+The application still has no schema-management privileges.
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)

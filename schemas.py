@@ -60,3 +60,23 @@ class CompanyRead(BaseModel):
     id: int
     name: str
     description: str | None = None
+
+
+class CompanyUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"name": "WorkWise Labs"}]},
+    )
+
+    name: str | None = Field(
+        default=None, min_length=1, max_length=200, pattern=r"\S",
+        description="May be omitted; explicit null is rejected.",
+    )
+    description: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def reject_null_name(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("Name must not be null")
+        return value

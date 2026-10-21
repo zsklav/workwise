@@ -81,3 +81,53 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
         with test_engine.begin() as connection:
             connection.execute(delete(Job).where(Job.title == marker))
             connection.execute(delete(Company).where(Company.name == marker))
+
+
+def test_company_rename_and_delete_commits_visible_to_independent_connections(test_engine: Engine):
+    marker = f"Company persistence {uuid4()}"
+    renamed = f"{marker} renamed"
+
+    def override_get_db() -> Iterator[Session]:
+        with Session(test_engine) as session:
+            yield session
+
+    previous_overrides = app.dependency_overrides.copy()
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            company = client.post("/companies", json={"name": marker})
+            assert company.status_code == 201
+            company_id = company.json()["id"]
+            job = client.post("/jobs", json={
+                "title": marker, "company_id": company_id, "location": "Remote",
+            })
+            assert job.status_code == 201
+            path = f"/companies/{company_id}"
+
+            updated = client.put(path, json={"name": renamed, "description": "Committed update"})
+            assert updated.status_code == 200
+            with test_engine.connect() as connection:
+                assert connection.scalar(select(Company.name).where(Company.id == company_id)) == renamed
+            assert client.get(f"/jobs/{job.json()['id']}").json()["company"] == renamed
+
+            cleared = client.patch(path, json={"description": None})
+            assert cleared.status_code == 200
+            with test_engine.connect() as connection:
+                stored = connection.execute(select(Company.__table__).where(Company.id == company_id)).mappings().one()
+                assert dict(stored) == {"id": company_id, "name": renamed, "description": None}
+
+            assert client.delete(path).status_code == 409
+            with test_engine.connect() as connection:
+                assert connection.scalar(select(Job.company_id).where(Job.id == job.json()["id"])) == company_id
+                assert connection.scalar(select(Company.name).where(Company.id == company_id)) == renamed
+
+            assert client.delete(f"/jobs/{job.json()['id']}").status_code == 204
+            assert client.delete(path).status_code == 204
+            with test_engine.connect() as connection:
+                assert connection.scalar(select(Company.id).where(Company.id == company_id)) is None
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        with test_engine.begin() as connection:
+            connection.execute(delete(Job).where(Job.title == marker))
+            connection.execute(delete(Company).where(Company.name.in_([marker, renamed])))

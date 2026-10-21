@@ -11,6 +11,9 @@ does not create jobs; deleting a job does not remove its company.
 | POST | `/companies` | Create a company; return 201 and its generated ID |
 | GET | `/companies` | List in ID order; default limit 20, maximum 100 |
 | GET | `/companies/{company_id}` | Return a company, or 404 if absent |
+| PUT | `/companies/{company_id}` | Replace name and description; return 200 |
+| PATCH | `/companies/{company_id}` | Update supplied fields only; return 200 |
+| DELETE | `/companies/{company_id}` | Delete an unlinked company; return empty 204 |
 
 Create accepts `name` and optional `description`. Name must be 1–200
 characters with at least one non-whitespace character. Unknown keys and
@@ -21,6 +24,17 @@ Listing accepts `limit` from 1 to 100 and nonnegative `offset`, defaulting to
 zero. Offsets count rows; an offset beyond the end returns an empty array.
 The response is a JSON array without total-count metadata.
 
+PUT requires name; omitted description becomes null. PATCH preserves omitted
+fields and clears description only when explicitly supplied as null. An empty
+PATCH leaves an existing company unchanged. Name cannot be null in either
+method. Invalid names, descriptions, unknown keys, and ID write keys return 422.
+Valid requests targeting missing companies return 404.
+
+Rename preserves the company's ID. Linked jobs keep their IDs and company IDs;
+their returned company name and the name filter reflect the new value on
+subsequent requests. Name is stored once on the company, so jobs need no text
+backfill when it changes.
+
 ## Constraints and transactions
 
 The table has an identity primary key, required `VARCHAR(200)` name, nullable
@@ -29,11 +43,18 @@ TEXT description, unique constraint `uq_companies_name`, and check constraint
 names; API validation additionally rejects other whitespace-only input.
 
 The unique constraint makes PostgreSQL responsible for rejecting duplicate
-names. The create route catches that specific constraint violation, rolls back
+names. The shared company commit helper catches that specific constraint violation, rolls back
 the failed transaction, and returns 409 with
 `{"detail": "Company name already exists"}`. Other integrity failures are
 re-raised. This avoids relying on an application-level lookup before insertion.
 No concurrent-request test has been run.
+
+The same helper translates the named job-company foreign-key violation during
+deletion into 409 with `{"detail": "Company has jobs and cannot be deleted"}`
+after rollback. Existing jobs and the company remain unchanged. No pre-delete
+job-count check is used; the database constraint makes the decision. Once all
+jobs have been deleted or reassigned, retrying company deletion succeeds with
+an empty 204 response. No child jobs are deleted by the company endpoint.
 
 Job create/PUT requests now require `company_id` instead of company text.
 PATCH accepts a new company ID to move a job. IDs must be positive JSON integers
@@ -67,21 +88,26 @@ using the configured migration role, then grant the runtime role access as the
 table owner or administrator:
 
 ```sql
-GRANT SELECT, INSERT ON TABLE public.companies TO workwise_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 ```
 
 Revision 0004 preserved all three development jobs and backfilled two companies.
 Before/after snapshots compared job IDs, titles, exact company names, locations,
 and descriptions. The schema matched the ORM after migration. The full
-PostgreSQL suite passed with 103 cases, including relation constraints,
+PostgreSQL suite passed with 135 cases, including relation constraints,
 reassignment, legacy-name backfill, downgrade restoration, and rejected legacy
-data without partial schema changes. See [testing notes](testing.md).
+data without partial schema changes. Company mutation cases additionally cover
+rename propagation, duplicate rollback, validation, description semantics,
+restricted deletion and retries. A second real-commit test verifies company
+changes and deletion through independent connections. This step required no
+schema migration; runtime UPDATE/DELETE permissions were granted separately.
+See [testing notes](testing.md).
 
 ## Next step
 
-Company update/delete endpoints are not implemented yet. Their design must
-retain unique-name conflicts and the restriction on deleting companies with
-jobs. Authentication and ownership checks remain later work.
+Authentication and ownership checks remain later work. Concurrent rename
+conflict detection beyond the unique constraint has not been added; updates
+do not yet use version fields or conditional requests.
 
 ## References
 

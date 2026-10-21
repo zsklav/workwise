@@ -5,7 +5,7 @@ engineering, database design, testing, and distributed systems.
 
 The Phase 1 checkpoint established a working single FastAPI application with
 PostgreSQL persistence. Later checkpoints add bounded job-list pagination,
-exact company filtering, and Company create/read APIs linked to jobs by foreign key.
+exact company filtering, and Company CRUD APIs linked to jobs by foreign key.
 The project was built from scratch; no Java migration is included.
 
 ## Implemented
@@ -13,8 +13,8 @@ The project was built from scratch; no Java migration is included.
 - Job creation, listing, retrieval, replacement, partial updates, and deletion.
 - Job-list pagination with validated limit/offset and deterministic ID ordering.
 - Optional exact company filtering, applied before pagination.
-- Company creation, paginated listing, and retrieval, with database-enforced
-  unique names and a 409 response for duplicates.
+- Company creation, paginated listing, retrieval, replacement, partial updates,
+  and deletion, with 409 responses for duplicate names or linked-company deletion.
 - Required job company IDs, database foreign keys, and backfill of legacy names.
 - Optional job descriptions with distinct omitted-field and explicit-null behavior.
 - Pydantic input validation and typed response models.
@@ -28,8 +28,7 @@ Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
-Company update/delete, authentication, messaging, containers, and deployment
-are still planned.
+Authentication, messaging, containers, and deployment are still planned.
 
 ## Stack
 
@@ -77,7 +76,7 @@ erDiagram
 
 ```text
 main.py                App and job endpoints
-routers/companies.py   Company create/read endpoints
+routers/companies.py   Company CRUD endpoints
 schemas.py             Request and response models
 models.py              SQLAlchemy table mappings
 database.py            Shared engine and session dependency
@@ -149,7 +148,7 @@ to the newly created tables:
 
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs TO workwise_app;
-GRANT SELECT, INSERT ON TABLE public.companies TO workwise_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
@@ -183,6 +182,9 @@ python -m uvicorn main:app --reload
 | POST | `/companies` | Create a company with a unique name | 201 |
 | GET | `/companies` | List a page of companies in ID order | 200 |
 | GET | `/companies/{company_id}` | Retrieve a company | 200 |
+| PUT | `/companies/{company_id}` | Replace editable company fields | 200 |
+| PATCH | `/companies/{company_id}` | Update supplied company fields | 200 |
+| DELETE | `/companies/{company_id}` | Delete a company with no jobs | 204 |
 
 First create a company using `POST /companies` (example below), or retrieve
 one using `GET /companies`. Use its actual returned ID in this `POST /jobs` body:
@@ -247,7 +249,17 @@ with `{"detail": "Company name already exists"}`. Missing companies return
 `404`; invalid input returns `422`. Company lists accept the same pagination
 bounds as job lists. Creating a company does not create jobs. PostgreSQL
 rejects deleting a company while jobs reference it; deleting a job keeps its
-company. Company update/delete APIs are not implemented yet.
+company. `DELETE /companies/{company_id}` returns `409` with
+`{"detail": "Company has jobs and cannot be deleted"}` while any jobs remain
+linked. Otherwise it returns an empty `204` response. Missing companies return 404.
+
+Company PUT requires `name`; description defaults to null, clearing an omitted
+description. PATCH preserves omitted fields, accepts `{"description": null}`
+to clear description, and rejects explicit null for name. An empty PATCH is a
+no-op for an existing company. Both reject invalid names and unknown fields.
+Renaming to an existing exact name returns 409 without changing either field.
+Renaming a company keeps its ID and jobs' company IDs unchanged; job responses
+and name filters immediately use the new name on subsequent requests.
 See [Company notes](docs/companies.md).
 
 ## Tests
@@ -262,11 +274,11 @@ database, enabling test setup without widening its development permissions.
 The jobs and companies tables must start empty; existing rows are not silently deleted.
 
 Most cases roll back their changes, including ORM commits through savepoints.
-A separate persistence case uses real commits, checks independent connections,
-and removes only its uniquely marked test row. Tests are designed for sequential
+Separate persistence cases use real commits, check independent connections,
+and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified checkpoint: **103 tests passed** on 2026-10-21. The learner also
+Last verified checkpoint: **135 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 ## Current scope and next steps
@@ -276,7 +288,7 @@ no authentication or ownership checks, and concurrency conflict detection has
 not been implemented. Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Next: company update/delete APIs, authentication and authorization, and packaging
+Next: authentication and authorization, and packaging
 and deployment. Messaging, resilience, and
 distributed tracing will follow concrete business workflows.
 

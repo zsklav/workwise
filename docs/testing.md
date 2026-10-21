@@ -8,9 +8,9 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 103 cases covering job and company APIs backed by
+The current suite has 135 cases covering job and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
-job persistence. All job and company endpoints use PostgreSQL.
+job/company persistence. All job and company endpoints use PostgreSQL.
 
 ## PostgreSQL setup
 
@@ -67,6 +67,12 @@ connection to `workwise_test`. It uses fresh sessions without the outer
 rollback transaction. A unique title identifies its row for cleanup if an
 assertion fails. It does not restart the server or database.
 
+A second persistence case creates its own company and linked job, renames the
+company through PUT, clears description through PATCH, and checks committed
+values through independent connections. It verifies deletion returns 409 while
+linked, then deletes the job and company and confirms the company row is gone.
+Cleanup targets only that case's UUID-marked rows, including the renamed company.
+
 Description cases cover text and explicit null input, omitted input, response
 and list output, PUT replacement and omission clearing, and invalid input.
 The independent-connection case also checks description persistence, including
@@ -91,6 +97,14 @@ after a conflict, invalid bodies, missing/invalid IDs, pagination, and keeping
 jobs unchanged. A direct ORM insert also verifies the database unique constraint.
 These cases use rollback fixtures; they do not simulate concurrent inserts.
 
+Company mutation tests cover PUT replacement and omission clearing, PATCH
+preservation and explicit-null clearing, empty PATCH, validation and unknown
+fields, missing/invalid IDs, and duplicate renames with all changes rolled back.
+Both PUT and PATCH renames propagate to linked job responses and name filters
+without changing IDs. Delete cases verify empty 204 responses, repeated-delete
+404, linked-company 409 preserving both jobs, continued writes after rollback,
+and successful retry only after all linked jobs are removed.
+
 Job-company cases verify reassignment through PUT/PATCH, matching name and ID
 filters before pagination, rejecting missing/invalid company references and old
 text write keys without changing jobs, rejecting direct foreign-key/null
@@ -107,8 +121,8 @@ rolled back at teardown; the development database is never downgraded.
 
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **103 passed**
-against local PostgreSQL, including job CRUD and company create/read endpoints. The command was run
+On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **135 passed**
+against local PostgreSQL, including job and company CRUD endpoints. The command was run
 with access to the local database server outside the restricted agent sandbox.
 
 ## References

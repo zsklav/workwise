@@ -1,24 +1,28 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from psycopg.errors import UniqueViolation
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Company
-from schemas import CompanyCreate, CompanyRead
+from schemas import CompanyCreate, CompanyRead, CompanyUpdate
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-@router.post("", status_code=201, response_model=CompanyRead)
-def create_company(company: CompanyCreate, db: DbSession) -> Company:
-    new_company = Company(**company.model_dump())
-    db.add(new_company)
+def find_company(company_id: int, db: Session) -> Company:
+    company = db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+def commit_company(db: Session) -> None:
     try:
         db.commit()
     except IntegrityError as error:
@@ -30,8 +34,21 @@ def create_company(company: CompanyCreate, db: DbSession) -> Company:
             raise HTTPException(
                 status_code=409, detail="Company name already exists"
             ) from error
+        if (
+            isinstance(error.orig, ForeignKeyViolation)
+            and error.orig.diag.constraint_name == "fk_jobs_company_id_companies"
+        ):
+            raise HTTPException(
+                status_code=409, detail="Company has jobs and cannot be deleted"
+            ) from error
         raise
 
+
+@router.post("", status_code=201, response_model=CompanyRead)
+def create_company(company: CompanyCreate, db: DbSession) -> Company:
+    new_company = Company(**company.model_dump())
+    db.add(new_company)
+    commit_company(db)
     db.refresh(new_company)
     return new_company
 
@@ -48,7 +65,34 @@ def get_companies(
 
 @router.get("/{company_id}", response_model=CompanyRead)
 def get_company(company_id: int, db: DbSession) -> Company:
-    company = db.get(Company, company_id)
-    if company is None:
-        raise HTTPException(status_code=404, detail="Company not found")
+    return find_company(company_id, db)
+
+
+@router.put("/{company_id}", response_model=CompanyRead)
+def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSession) -> Company:
+    company = find_company(company_id, db)
+    company.name = updated_company.name
+    company.description = updated_company.description
+    commit_company(db)
+    db.refresh(company)
     return company
+
+
+@router.patch("/{company_id}", response_model=CompanyRead)
+def patch_company(company_id: int, updated_company: CompanyUpdate, db: DbSession) -> Company:
+    company = find_company(company_id, db)
+    changes = updated_company.model_dump(exclude_unset=True)
+    if changes:
+        for field, value in changes.items():
+            setattr(company, field, value)
+        commit_company(db)
+        db.refresh(company)
+    return company
+
+
+@router.delete("/{company_id}", status_code=204)
+def delete_company(company_id: int, db: DbSession) -> Response:
+    company = find_company(company_id, db)
+    db.delete(company)
+    commit_company(db)
+    return Response(status_code=204)
