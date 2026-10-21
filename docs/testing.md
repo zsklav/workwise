@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 204 cases covering readiness, auth, job, and company APIs backed by
+The current suite has 219 cases covering observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -146,9 +146,17 @@ failure while `/health` remains available. GitHub CI additionally bootstraps
 fresh databases, verifies migration grants, and builds/runs the Docker stack
 through an HTTP smoke test. See [Docker/CI verification](docker-ci.md).
 
+Observability tests use isolated registries and a captured JSON handler to
+verify privacy and route-label bounds without resetting global application
+metrics. They exercise streaming/error/cancellation behavior, concurrent request
+context isolation, and non-HTTP passthrough. PostgreSQL-backed cases verify
+admin-only metrics and revocation, plus correlation headers on existing API
+responses. Docker smoke tests verify real HTTP request IDs and 401/403 metrics
+access. See [observability semantics](observability.md).
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **204 passed**
+On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **219 passed**
 against local PostgreSQL, including auth and job/company CRUD. The command was run
 with access to the local database server outside the restricted agent sandbox.
 

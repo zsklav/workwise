@@ -98,7 +98,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 Revision 0004 preserved all three development jobs and backfilled two companies.
 Before/after snapshots compared job IDs, titles, exact company names, locations,
 and descriptions. The schema matched the ORM after migration. The full
-PostgreSQL suite passed with 204 cases, including readiness, authentication, ownership, relation constraints,
+PostgreSQL suite passed with 219 cases, including observability, readiness, authentication, ownership, relation constraints,
 reassignment, legacy-name backfill, downgrade restoration, and rejected legacy
 data without partial schema changes. Company mutation cases additionally cover
 rename propagation, duplicate rollback, validation, description semantics,

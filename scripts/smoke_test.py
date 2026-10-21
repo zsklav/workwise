@@ -6,7 +6,7 @@ import secrets
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 def main() -> None:
@@ -30,11 +30,13 @@ def main() -> None:
             response = error
         with response:
             assert response.status == expected, f"{method} {path}: expected {expected}, got {response.status}"
+            assert UUID(response.headers["X-Request-ID"]).version == 4
             content = response.read()
             return json.loads(content) if content else None
 
     assert request("GET", "/health", 200) == {"status": "OK"}
     assert request("GET", "/ready", 200) == {"status": "ready"}
+    request("GET", "/metrics", 401)
     request("POST", "/companies", 401, {"name": "Anonymous must fail"})
     username = "smoke_" + uuid4().hex
     password = secrets.token_urlsafe(32)
@@ -44,6 +46,7 @@ def main() -> None:
         "grant_type": "password", "username": username, "password": password,
     }, form=True)["access_token"]
     assert request("GET", "/auth/me", 200)["id"] == user["id"]
+    request("GET", "/metrics", 403)
     company = request("POST", "/companies", 201, {"name": username})
     company_path = f"/companies/{company['id']}"
     payload = {"title": "Container smoke test", "company_id": company["id"], "location": "Remote"}
@@ -57,7 +60,7 @@ def main() -> None:
     request("DELETE", company_path, 409)
     request("DELETE", job_path, 204)
     request("DELETE", company_path, 204)
-    print("Container HTTP smoke test passed: readiness, auth, ownership, CRUD, and linked-delete conflict.")
+    print("Container HTTP smoke test passed: readiness, auth, ownership, CRUD, request IDs, and protected metrics.")
 
 
 if __name__ == "__main__":

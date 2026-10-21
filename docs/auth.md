@@ -49,6 +49,7 @@ logout blacklist, refresh-token flow, or individual-token revocation yet.
 |---|---|---|---|
 | Health, list/get jobs or companies | Allowed | Allowed | Allowed |
 | Read `/auth/me` | 401 | Own account | Own account |
+| Read `/metrics` | 401 | 403 | Allowed |
 | Create company | 401 | Own company | Own company |
 | Edit/delete company | 401 | Owned companies | Any company |
 | Create/edit/delete job | 401 | Jobs in owned companies | Any company |
@@ -88,7 +89,7 @@ work; this checkpoint is verified locally and is not a production security audit
 
 ## Verification
 
-The PostgreSQL suite has 204 passing cases, including real signup/login,
+The PostgreSQL suite has 219 passing cases, including real signup/login,
 password hash verification, malformed/expired/incorrectly signed JWT rejection,
 role-claim rejection as an authority source, disabled accounts, all unauthenticated
 write routes, cross-owner write denial, both sides of job movement, administrator

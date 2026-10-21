@@ -6,6 +6,8 @@ from alembic.script import ScriptDirectory
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import PlainTextResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -13,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Company, Job
+from observability import ObservabilityMiddleware, http_metrics
 from routers.companies import router as companies_router
 from routers.auth import router as auth_router
 from schemas import JobCreate, JobRead, JobUpdate
@@ -20,6 +23,7 @@ from security import CurrentUser, require_company_access
 
 
 app = FastAPI(title="WorkWise API")
+app.add_middleware(ObservabilityMiddleware)
 app.include_router(companies_router)
 app.include_router(auth_router)
 
@@ -61,6 +65,14 @@ def commit_job(job: Job, db: Session) -> None:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "OK"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse, tags=["operations"])
+def metrics(user: CurrentUser) -> Response:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return Response(content=generate_latest(http_metrics.registry), media_type=CONTENT_TYPE_LATEST,
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/ready")

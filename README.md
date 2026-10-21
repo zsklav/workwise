@@ -28,6 +28,8 @@ The project was built from scratch; no Java migration is included.
 - Docker image and Compose stack with an isolated PostgreSQL volume and migration service.
 - GitHub Actions for PostgreSQL tests, image build, and HTTP container smoke tests.
 - Database/schema readiness at `/ready`, separate from process health at `/health`.
+- JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
+- Admin-only Prometheus-format snapshots at `/metrics`.
 
 Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
@@ -94,6 +96,7 @@ main.py                App and job endpoints
 routers/companies.py   Company CRUD endpoints
 routers/auth.py        Signup, login, and current-user endpoints
 security.py            Password hashing, JWT verification, and ownership checks
+observability.py       Request context, JSON logs, and HTTP metrics middleware
 manage_users.py        Local administrator creation command
 schemas.py             Request and response models
 models.py              SQLAlchemy table mappings
@@ -227,7 +230,7 @@ or initialization command. See [migration notes](docs/migrations.md).
 ### Start the API
 
 ```powershell
-python -m uvicorn main:app --reload
+python -m uvicorn main:app --reload --no-access-log
 ```
 
 - API docs: <http://127.0.0.1:8000/docs>
@@ -235,6 +238,9 @@ python -m uvicorn main:app --reload
 - Jobs: <http://127.0.0.1:8000/jobs>
 
 `--reload` is for local development. Database rows persist across app restarts.
+`--no-access-log` avoids duplicate raw URL logs; WorkWise emits its own JSON
+request records without query strings, credentials, or bodies. Docker already
+uses this flag. Responses include a new `X-Request-ID` that matches their log.
 
 ## API
 
@@ -248,6 +254,7 @@ permission on both its current company and destination company.
 |---|---|---|---|
 | GET | `/health` | Process health | 200 |
 | GET | `/ready` | Database reachable and at the expected schema revision | 200 |
+| GET | `/metrics` | Prometheus HTTP metrics; admin bearer token required | 200 |
 | GET | `/jobs` | List a page of jobs in ID order | 200 |
 | GET | `/jobs/{job_id}` | Retrieve a job | 200 |
 | POST | `/jobs` | Create a job | 201 |
@@ -387,13 +394,31 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **204 tests passed** on 2026-10-21. The learner also
+Last verified local checkpoint: **219 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 GitHub [CI runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml) on
 pushes/PRs to main and manual dispatch. One job tests a fresh PostgreSQL setup;
 another builds the image and verifies the Compose stack through real HTTP.
 No image publication or live deployment occurs in this workflow.
+
+## Observability
+
+Authorize as an admin in Swagger, then call `GET /metrics`. Anonymous callers
+receive 401 and members receive 403. The endpoint returns request counters,
+latency histograms, and unhandled-error counters as Prometheus text.
+
+Labels use route templates such as `/jobs/{job_id}`, never actual IDs, users,
+request IDs, or query values. Unknown routes share one label. JSON request logs
+include timestamp, request ID, method, route, status, duration, completion flags,
+and exception type where applicable. Unexpected errors before response headers
+return generic 500 JSON and a request ID rather than exception details.
+
+This is an exporter/logging foundation. Counters are in memory per process and
+reset on restart; no Prometheus server, Grafana, alert rules, or external log
+storage is deployed. Metrics use the existing expiring admin JWT for manual
+inspection; continuous scraping needs a later service-auth design. See
+[observability details](docs/observability.md).
 
 ## Current scope and next steps
 
@@ -413,5 +438,6 @@ distributed tracing will follow concrete business workflows.
 - [Company APIs and database constraints](docs/companies.md)
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Docker runtime and CI](docs/docker-ci.md)
+- [Request logs, IDs, and metrics](docs/observability.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

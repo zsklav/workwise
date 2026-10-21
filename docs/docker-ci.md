@@ -119,6 +119,13 @@ not installed on the local Windows host; image/runtime validation runs in
 GitHub's Linux CI job. Check the actual [workflow runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml)
 for the current commit's result rather than treating configuration alone as a pass.
 
+The subsequent observability checkpoint adds JSON request logs and UUID response
+headers. Docker disables Uvicorn's duplicate raw access logger. HTTP smoke tests
+check correlation headers and deny metrics access to anonymous/member callers;
+the PostgreSQL suite separately verifies the admin response. The full local
+suite now passes 219 cases. See [observability](observability.md) for metrics
+lifetime and collection limitations.
+
 ## References
 
 - [Docker Python guide](https://docs.docker.com/guides/python/)

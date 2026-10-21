@@ -23,6 +23,7 @@ timeouts beyond connection establishment, and error logging need later work.
 |---|---|---|---|
 | `GET /health` | Process health; no database query | 200 | n/a |
 | `GET /ready` | Database access and expected Alembic revision; 503 if unavailable/stale | 200 | n/a |
+| `GET /metrics` | HTTP metrics; active admin bearer token required | 200 | n/a |
 | `GET /jobs` | Page of jobs, optionally filtered by company, ordered by ID | 200 | Empty list |
 | `GET /jobs/{job_id}` | Retrieve a job | 200 | 404 |
 | `POST /jobs` | Create with database-generated ID | 201 | n/a |
@@ -144,7 +145,7 @@ meanings. No new database migration was required for this endpoint.
 With the virtual environment active, start the application:
 
 ```powershell
-python -m uvicorn main:app --reload
+python -m uvicorn main:app --reload --no-access-log
 ```
 
 1. Open `http://127.0.0.1:8000/docs` and create a job using `POST /jobs`.
