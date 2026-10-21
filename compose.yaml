@@ -1,6 +1,84 @@
 name: workwise-docker
 
 services:
+  rabbitmq:
+    image: rabbitmq:4.2-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: workwise
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+    hostname: rabbitmq
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+    restart: unless-stopped
+
+  notification-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: notifications
+      POSTGRES_PASSWORD: ${NOTIFICATION_ADMIN_PASSWORD:?Generate .env.docker first}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Generate .env.docker first}
+    volumes:
+      - notification_data:/var/lib/postgresql/data
+      - ./docker/notifications/init.sh:/docker-entrypoint-initdb.d/01-notifications.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notifications"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  publisher:
+    image: workwise-api:local
+    build: .
+    command: ["python", "-m", "messaging.publisher"]
+    environment:
+      DB_HOST: db
+      DB_NAME: workwise
+      DB_USER: workwise_app
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  notification-worker:
+    image: workwise-api:local
+    build: .
+    command: ["python", "-m", "messaging.worker"]
+    environment:
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Generate .env.docker first}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      notification-db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
   db:
     image: postgres:17-alpine
     environment:
@@ -81,3 +159,5 @@ services:
 
 volumes:
   postgres_data:
+  notification_data:
+  rabbitmq_data:

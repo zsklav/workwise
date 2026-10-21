@@ -12,6 +12,10 @@ and existing local `.env` are independent of this stack.
 | migrate | One-shot Alembic upgrade plus runtime grants | Migration role |
 | api | FastAPI/Uvicorn on container port 8000 | Runtime role and JWT secret |
 | admin | Explicit tools-profile admin creation | Migration role and JWT secret |
+| publisher | Outbox-to-RabbitMQ process | Jobs runtime role and broker password |
+| rabbitmq | Durable queue and DLQ, management on loopback 15672 | Private broker password |
+| notification-worker | Idempotent receipt consumer, retries and quarantine | Broker and notification runtime credentials |
+| notification-db | Independent notification state and volume | Separate admin/runtime credentials |
 
 The API is exposed only on host loopback port 8001 by default (`API_PORT`).
 The database has no host port mapping. Compose service DNS uses host `db`;
@@ -23,6 +27,10 @@ credentials without printing values. It never reads/copies native `.env` and
 refuses to overwrite an existing file. `.env.docker.example` documents variable
 names only. Always pass `--env-file .env.docker`; this avoids using the native
 credentials for Compose interpolation.
+
+For an existing config, `python scripts/create_docker_env.py --add-missing`
+appends new broker/notification keys without changing existing values. See
+[distributed event processing](distributed-systems.md) for failure demos and replay.
 
 On an empty volume, `docker/postgres/init.sh` creates runtime/migration roles,
 the application database owned by the migration role, and a separate empty
@@ -36,6 +44,9 @@ starts the API. The migration runner applies reviewed revisions and explicit
 grants in a transaction. It grants users SELECT/INSERT and company/job CRUD;
 it also grants read-only access to Alembic's version table for readiness. It
 does not give the runtime role DDL or user role-management access.
+Revision 0006 additionally grants SELECT/INSERT/UPDATE on outbox events to the
+jobs runtime role used by API and publisher. The notification worker has separate
+credentials and cannot access the jobs database.
 
 ## Image and health checks
 
@@ -84,10 +95,10 @@ docker compose --env-file .env.docker run --rm admin python manage_users.py crea
 For a code/schema upgrade, stop API writes before applying migrations:
 
 ```powershell
-docker compose --env-file .env.docker stop api
+docker compose --env-file .env.docker stop api publisher notification-worker
 docker compose --env-file .env.docker build
 docker compose --env-file .env.docker run --rm migrate
-docker compose --env-file .env.docker up --detach api
+docker compose --env-file .env.docker up --detach --wait
 ```
 
 Normal `docker compose --env-file .env.docker down` retains the volume. Do not

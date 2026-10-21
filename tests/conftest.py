@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from database import database_url, get_db
 from main import app
-from models import Base, Company, Job, User
+from models import Base, Company, Job, User, OutboxEvent
 from security import create_access_token, password_hasher
 
 
@@ -37,7 +37,7 @@ def test_engine() -> Iterator[Engine]:
             inspector = inspect(connection)
             has_managed_tables = any(
                 inspector.has_table(name, schema="public")
-                for name in ("jobs", "companies", "users")
+                for name in ("jobs", "companies", "users", "outbox_events")
             )
             if has_managed_tables and not inspector.has_table("alembic_version", schema="public"):
                 raise RuntimeError(
@@ -56,7 +56,7 @@ def test_engine() -> Iterator[Engine]:
             if compare_metadata(migration_context, Base.metadata):
                 raise RuntimeError("Test migrations do not match the ORM models.")
 
-            for model in (Job, Company, User):
+            for model in (Job, Company, User, OutboxEvent):
                 if connection.scalar(select(func.count()).select_from(model)) != 0:
                     raise RuntimeError(
                         f"workwise_test.{model.__tablename__} must start empty. "

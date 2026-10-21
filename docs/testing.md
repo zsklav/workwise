@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 219 cases covering observability, readiness, auth, job, and company APIs backed by
+The current suite has 233 cases covering messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 

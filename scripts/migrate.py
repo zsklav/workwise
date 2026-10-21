@@ -31,6 +31,7 @@ def main() -> None:
             connection.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs, public.companies TO " + role))
             connection.execute(text("GRANT SELECT, INSERT ON TABLE public.users TO " + role))
             connection.execute(text("GRANT SELECT ON TABLE public.alembic_version TO " + role))
+            connection.execute(text("GRANT SELECT, INSERT, UPDATE ON TABLE public.outbox_events TO " + role))
         print("Migrations and runtime grants completed.")
     finally:
         engine.dispose()

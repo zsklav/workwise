@@ -30,12 +30,16 @@ The project was built from scratch; no Java migration is included.
 - Database/schema readiness at `/ready`, separate from process health at `/health`.
 - JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
 - Admin-only Prometheus-format snapshots at `/metrics`.
+- Transactional outbox for `job.created.v1`, a RabbitMQ publisher, and a separate notification worker/database.
+- Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
+- Docker failure demos exercised in CI: broker outage, offline worker, database outage and recovery.
 
 Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
-Messaging and live deployment are still planned.
+See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow and guarantees.
+Live cloud deployment is still planned.
 
 ## Stack
 
@@ -48,6 +52,7 @@ Messaging and live deployment are still planned.
 | Migrations | Alembic |
 | Tests | Pytest and HTTPX/TestClient |
 | Security | pwdlib/Argon2 and PyJWT |
+| Messaging | RabbitMQ and Pika; separate PostgreSQL notification state |
 
 Direct dependencies are pinned to the versions used locally in
 `requirements.txt` and `requirements-dev.txt`. These are not a full transitive
@@ -61,8 +66,13 @@ flowchart LR
     API --> Validation[Pydantic schemas]
     API --> Session[Request database session]
     Session --> ORM[SQLAlchemy Job and Company models]
-    ORM --> PostgreSQL[(PostgreSQL)]
+    ORM --> PostgreSQL[(Jobs + Outbox / PostgreSQL)]
     Alembic[Alembic migrations] --> PostgreSQL
+    Publisher[Event publisher] --> PostgreSQL
+    Publisher --> RabbitMQ[Durable RabbitMQ queue]
+    RabbitMQ --> Worker[Notification worker]
+    Worker --> Notifications[(Independent notification database)]
+    Worker --> DLQ[Dead-letter queue]
 ```
 
 ```mermaid
@@ -123,8 +133,9 @@ python scripts/create_docker_env.py
 docker compose --env-file .env.docker up --build --detach --wait
 ```
 
-If `.env.docker` already exists, skip generation; the script refuses to overwrite
-credentials. Docker uses a fresh database/volume, independent of the native
+If `.env.docker` already exists, run `python scripts/create_docker_env.py --add-missing`
+to append new broker/worker keys while preserving existing credentials.
+Docker uses separate database volumes, independent of the native
 PostgreSQL setup below. Existing local jobs are not copied into it. Your native
 API can keep using port 8000; Docker docs are at <http://127.0.0.1:8001/docs>.
 
@@ -220,6 +231,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs TO workwise_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 GRANT SELECT, INSERT ON TABLE public.users TO workwise_app;
 GRANT SELECT ON TABLE public.alembic_version TO workwise_app;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.outbox_events TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
@@ -387,19 +399,19 @@ python -m pytest -v
 Tests explicitly use `workwise_test`, applying Alembic migrations through a
 shared test connection before running. The runtime role owns this separate test
 database, enabling test setup without widening its development permissions.
-The users, companies, and jobs tables must start empty; existing rows are not silently deleted.
+The users, companies, jobs, and outbox tables must start empty; existing rows are not silently deleted.
 
 Most cases roll back their changes, including ORM commits through savepoints.
 Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **219 tests passed** on 2026-10-21. The learner also
+Last verified local checkpoint: **233 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 GitHub [CI runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml) on
 pushes/PRs to main and manual dispatch. One job tests a fresh PostgreSQL setup;
-another builds the image and verifies the Compose stack through real HTTP.
+another builds the image, verifies HTTP, and exercises broker/worker failure recovery.
 No image publication or live deployment occurs in this workflow.
 
 ## Observability
@@ -428,9 +440,9 @@ limits, and version-based concurrency conflict detection remain future work.
 Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Docker and CI configuration are implemented. Next: live deployment when a
-hosting target is selected. Messaging, resilience, and
-distributed tracing will follow concrete business workflows.
+Docker, CI, transactional messaging and failure recovery demos are implemented.
+Next: live deployment when a hosting target is selected, followed by external
+notification delivery, retention/monitoring and distributed tracing as needed.
 
 ## Engineering notes
 
@@ -438,6 +450,7 @@ distributed tracing will follow concrete business workflows.
 - [Company APIs and database constraints](docs/companies.md)
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Docker runtime and CI](docs/docker-ci.md)
+- [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
 - [Request logs, IDs, and metrics](docs/observability.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

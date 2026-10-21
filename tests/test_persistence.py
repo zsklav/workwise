@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from main import app
-from models import Company, Job, User
+from models import Company, Job, User, OutboxEvent
 
 
 def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
     # This case uses real commits in workwise_test instead of rollback fixtures.
     marker = f"Persistence check {uuid4()}"
     username = f"persist_{uuid4().hex}"
+    job_id = None
     payload = {
         "title": marker,
         "location": "Remote",
@@ -90,6 +91,8 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
         app.dependency_overrides.update(previous_overrides)
         # Remove only this test's uniquely marked row, even if an assertion failed.
         with test_engine.begin() as connection:
+            if job_id is not None:
+                connection.execute(delete(OutboxEvent).where(OutboxEvent.payload["job_id"].as_integer() == job_id))
             connection.execute(delete(Job).where(Job.title == marker))
             connection.execute(delete(Company).where(Company.name == marker))
             connection.execute(delete(User).where(User.username == username))
@@ -99,6 +102,7 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
     marker = f"Company persistence {uuid4()}"
     username = f"persist_{uuid4().hex}"
     renamed = f"{marker} renamed"
+    job_id = None
 
     def override_get_db() -> Iterator[Session]:
         with Session(test_engine) as session:
@@ -125,6 +129,7 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
                 "title": marker, "company_id": company_id, "location": "Remote",
             })
             assert job.status_code == 201
+            job_id = job.json()["id"]
             path = f"/companies/{company_id}"
 
             updated = client.put(path, json={"name": renamed, "description": "Committed update"})
@@ -152,6 +157,8 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)
         with test_engine.begin() as connection:
+            if job_id is not None:
+                connection.execute(delete(OutboxEvent).where(OutboxEvent.payload["job_id"].as_integer() == job_id))
             connection.execute(delete(Job).where(Job.title == marker))
             connection.execute(delete(Company).where(Company.name.in_([marker, renamed])))
             connection.execute(delete(User).where(User.username == username))

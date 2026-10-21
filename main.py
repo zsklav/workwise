@@ -14,7 +14,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Company, Job
+from models import Company, Job, OutboxEvent
+from messaging.events import job_created
 from observability import ObservabilityMiddleware, http_metrics
 from routers.companies import router as companies_router
 from routers.auth import router as auth_router
@@ -48,8 +49,13 @@ def require_company(company_id: int, db: Session, user) -> None:
     require_company_access(company, user)
 
 
-def commit_job(job: Job, db: Session) -> None:
+def commit_job(job: Job, db: Session, *, emit_created: bool = False) -> None:
     try:
+        if emit_created:
+            db.flush()
+            event = job_created(job.id, job.company_id)
+            db.add(OutboxEvent(id=event.event_id, payload=event.model_dump(mode="json"),
+                               created_at=event.occurred_at))
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -118,7 +124,7 @@ def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
     require_company(job.company_id, db, user)
     new_job = Job(**job.model_dump())
     db.add(new_job)
-    commit_job(new_job, db)
+    commit_job(new_job, db, emit_created=True)
     return new_job
 
 
