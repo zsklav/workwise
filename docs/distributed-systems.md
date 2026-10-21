@@ -1,9 +1,10 @@
 # Distributed event processing
 
 WorkWise remains one repository. API, publisher, RabbitMQ, worker, and notification
-database run as independent processes/containers. Only job creation emits an
-event in this checkpoint. Notifications are durable **demo receipt records**;
-there is no email provider, external send, or notification read API yet.
+database run as independent processes/containers. Job creation emits a recipient
+event and delivers an **in-app inbox notification**. A separate internal API serves
+the caller's inbox through the main authenticated API; no external email is sent.
+See [inbox and tracing](notifications-tracing.md) for the current workflow and rollout.
 
 ```mermaid
 flowchart LR
@@ -35,16 +36,16 @@ flowchart LR
 
 This is **at-least-once delivery with idempotent database effects**, not end-to-end
 exactly-once delivery. The event envelope contains a UUID, event type/version,
-UTC timestamp, job ID, and company ID. No credentials or personal contact data
+UTC timestamp, job ID, company ID and (in v2) recipient user ID. No credentials or personal contact data
 are included. IDs are a historical reference: receipts do not query or foreign-key
 the jobs database, and events survive later job/company deletion.
 
 Worker state is a separate PostgreSQL service/volume and independently versioned
-schema (`notification_schema_version = 1`). Its runtime role can only select/insert
-receipts and read that version; it cannot create tables or update/delete receipts.
-`docker/notifications/init.sh` initializes only a fresh notification volume. Future
-notification schema changes need their own reviewed migration; API Alembic never
-manages this database. API and publisher share the jobs runtime role for now;
+schema (`notification_schema_version = 2`). Its runtime role can only select/insert
+receipts/inbox rows and read that version; it cannot create tables or update/delete rows.
+`docker/notifications/init.sh` initializes a fresh notification volume at v1;
+`notification-migrate` upgrades it to v2 and grants the separate inbox API role.
+Jobs Alembic never manages this database. API and publisher share the jobs runtime role for now;
 publisher has no JWT/migration credentials. Worker receives no jobs DB/JWT/admin
 credentials. Broker credentials are shared by the two trusted background services;
 per-service RabbitMQ permissions remain a later hardening step.

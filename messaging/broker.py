@@ -5,6 +5,7 @@ import logging
 import pika
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from tracing import capture_context, trace_id
 
 QUEUE = "workwise.notifications.v1"
 DLQ = "workwise.notifications.dead.v1"
@@ -40,7 +41,7 @@ def prepare(connection):
 
 
 def publish(channel, queue, body, *, message_id, retries=0, reason=None):
-    headers = {"retries": retries}
+    headers = {**capture_context(), "retries": retries}
     if reason:
         headers["failure_type"] = reason
     channel.basic_publish(
@@ -52,4 +53,7 @@ def publish(channel, queue, body, *, message_id, retries=0, reason=None):
 
 
 def log(event, **fields):
+    identity = trace_id()
+    if identity:
+        fields["trace_id"] = identity
     print(json.dumps({"event": event, **fields}), flush=True)

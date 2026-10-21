@@ -16,6 +16,9 @@ and existing local `.env` are independent of this stack.
 | rabbitmq | Durable queue and DLQ, management on loopback 15672 | Private broker password |
 | notification-worker | Idempotent receipt consumer, retries and quarantine | Broker and notification runtime credentials |
 | notification-db | Independent notification state and volume | Separate admin/runtime credentials |
+| notification-migrate | Independent inbox schema upgrade and grants | Notification admin credentials |
+| notification-api | Internal recipient inbox/read API | Restricted inbox DB role and separate service signing secret |
+| jaeger | OTLP tracing and local UI on 16686 | No business credentials |
 
 The API is exposed only on host loopback port 8001 by default (`API_PORT`).
 The database has no host port mapping. Compose service DNS uses host `db`;
@@ -118,6 +121,8 @@ with read-only repository permission and a timeout on each job. It has two jobs:
   build/start the image, verify UID and absence of privileged environment
   credentials, then exercise readiness, signup/login, ownership, CRUD, and
   restricted deletion through HTTP. Cleanup removes only this runner's stack.
+  It also runs broker/worker outage tests, recipient inbox isolation/read tests,
+  verifies exported cross-service traces, and tests inbox/collector outages.
 
 `scripts/smoke_test.py` is for disposable CI stacks. It creates a random member
 account and cleans up its company/job through the API. The account itself

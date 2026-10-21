@@ -115,7 +115,7 @@ def main():
                 "import os; assert all(k not in os.environ for k in ('DB_PASSWORD','JWT_SECRET','MIGRATION_DB_PASSWORD','NOTIFICATION_ADMIN_PASSWORD'))")
         compose("exec", "-T", "notification-worker", "python", "-c",
                 "from messaging.notification_store import *; e=store_engine(NotificationSettings()); "
-                "c=e.connect(); assert c.scalar(text('SELECT version FROM notification_schema_version')) == 1; "
+                "c=e.connect(); assert c.scalar(text('SELECT version FROM notification_schema_version')) == 2; "
                 "assert c.scalar(text(\"SELECT has_table_privilege(current_user, 'notification_receipts', 'INSERT')\")); "
                 "assert not c.scalar(text(\"SELECT has_table_privilege(current_user, 'notification_receipts', 'DELETE')\")); "
                 "assert not c.scalar(text(\"SELECT has_schema_privilege(current_user, 'public', 'CREATE')\")); c.close(); e.dispose()")

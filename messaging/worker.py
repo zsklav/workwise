@@ -7,17 +7,24 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from messaging.broker import (BrokerSettings, DLQ, MAX_RETRIES, QUEUE, connect, log, prepare, publish)
-from messaging.events import JobCreated
+from messaging.events import parse_event
 from messaging.health import beat
 from messaging.notification_store import EventConflict, NotificationSettings, record_notification, store_engine
+from tracing import SpanKind, configure_tracing, failed, span
 
 
 def handle(connection, channel, method, properties, body, engine):
+    with span("notifications.process", SpanKind.CONSUMER, properties.headers or {}):
+        return process(connection, channel, method, properties, body, engine)
+
+
+def process(connection, channel, method, properties, body, engine):
     try:
-        event = JobCreated.model_validate_json(body)
+        event = parse_event(body)
         if UUID(properties.message_id) != event.event_id:
             raise ValueError("Message ID does not match envelope")
     except (ValidationError, ValueError, TypeError, AttributeError):
+        failed("invalid_event")
         publish(channel, DLQ, body, message_id=properties.message_id, reason="invalid_event")
         channel.basic_ack(method.delivery_tag)
         log("notification_dead_lettered", reason="invalid_event")
@@ -29,6 +36,7 @@ def handle(connection, channel, method, properties, body, engine):
     try:
         created = record_notification(engine, event)
     except (SQLAlchemyError, EventConflict) as error:
+        failed(type(error).__name__)
         exhausted = retries >= MAX_RETRIES or isinstance(error, EventConflict)
         if not exhausted:
             connection.sleep(min(2 ** retries, 4))
@@ -43,6 +51,7 @@ def handle(connection, channel, method, properties, body, engine):
 
 
 def main():
+    configure_tracing("workwise-notification-worker")
     settings = BrokerSettings()
     engine = store_engine(NotificationSettings())
     while True:

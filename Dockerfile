@@ -13,6 +13,7 @@ RUN python -m pip install --disable-pip-version-check -r requirements.txt \
 COPY *.py ./
 COPY routers/ ./routers/
 COPY messaging/ ./messaging/
+COPY notifications/ ./notifications/
 COPY migrations/ ./migrations/
 COPY scripts/ ./scripts/
 COPY alembic.ini ./

@@ -1,6 +1,41 @@
 name: workwise-docker
 
 services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686"
+    restart: unless-stopped
+
+  notification-migrate:
+    image: workwise-api:local
+    build: .
+    command: ["python", "scripts/migrate_notifications.py"]
+    environment:
+      NOTIFICATION_ADMIN_PASSWORD: ${NOTIFICATION_ADMIN_PASSWORD:?Generate .env.docker first}
+      NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    restart: "no"
+
+  notification-api:
+    image: workwise-api:local
+    build: .
+    command: ["python", "-m", "uvicorn", "notifications.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment:
+      NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
+      NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:?Add missing .env.docker keys}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      notification-migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
   rabbitmq:
     image: rabbitmq:4.2-management-alpine
     environment:
@@ -46,6 +81,7 @@ services:
       DB_USER: workwise_app
       DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -70,11 +106,14 @@ services:
     environment:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Generate .env.docker first}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     depends_on:
       rabbitmq:
         condition: service_healthy
       notification-db:
         condition: service_healthy
+      notification-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-m", "messaging.health"]
       interval: 10s
@@ -151,6 +190,9 @@ services:
       DB_USER: workwise_app
       DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
       JWT_SECRET: ${JWT_SECRET:?Generate .env.docker first}
+      NOTIFICATION_SERVICE_URL: http://notification-api:8000
+      NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:?Add missing .env.docker keys}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     ports:
       - "127.0.0.1:${API_PORT:-8001}:8000"
     depends_on:

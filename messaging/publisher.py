@@ -12,6 +12,7 @@ from database import engine
 from models import OutboxEvent
 from messaging.broker import BrokerSettings, QUEUE, connect, log, prepare, publish
 from messaging.health import beat
+from tracing import SpanKind, configure_tracing, span
 
 
 def publish_one(session: Session, channel) -> bool:
@@ -21,13 +22,16 @@ def publish_one(session: Session, channel) -> bool:
                                .with_for_update(skip_locked=True).limit(1))
         if event is None:
             return False
-        publish(channel, QUEUE, json.dumps(event.payload).encode(), message_id=str(event.id))
+        with span("outbox.publish", SpanKind.PRODUCER, event.trace_context or {}) as current:
+            current.set_attribute("messaging.message.id", str(event.id))
+            publish(channel, QUEUE, json.dumps(event.payload).encode(), message_id=str(event.id))
         event.published_at = datetime.now(timezone.utc)
     log("outbox_published", event_id=str(event.id))
     return True
 
 
 def main():
+    configure_tracing("workwise-publisher")
     settings = BrokerSettings()
     while True:
         connection = None

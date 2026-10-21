@@ -19,14 +19,19 @@ from messaging.events import job_created
 from observability import ObservabilityMiddleware, http_metrics
 from routers.companies import router as companies_router
 from routers.auth import router as auth_router
+from routers.notifications import router as notifications_router
 from schemas import JobCreate, JobRead, JobUpdate
 from security import CurrentUser, require_company_access
+from tracing import TracingMiddleware, capture_context, configure_tracing
 
 
+configure_tracing("workwise-api")
 app = FastAPI(title="WorkWise API")
 app.add_middleware(ObservabilityMiddleware)
+app.add_middleware(TracingMiddleware)
 app.include_router(companies_router)
 app.include_router(auth_router)
+app.include_router(notifications_router)
 
 DbSession = Annotated[Session, Depends(get_db)]
 schema_head = ScriptDirectory.from_config(Config(str(Path(__file__).resolve().with_name("alembic.ini")))).get_current_head()
@@ -49,13 +54,13 @@ def require_company(company_id: int, db: Session, user) -> None:
     require_company_access(company, user)
 
 
-def commit_job(job: Job, db: Session, *, emit_created: bool = False) -> None:
+def commit_job(job: Job, db: Session, *, recipient_id: int | None = None) -> None:
     try:
-        if emit_created:
+        if recipient_id is not None:
             db.flush()
-            event = job_created(job.id, job.company_id)
+            event = job_created(job.id, job.company_id, recipient_id)
             db.add(OutboxEvent(id=event.event_id, payload=event.model_dump(mode="json"),
-                               created_at=event.occurred_at))
+                               created_at=event.occurred_at, trace_context=capture_context()))
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -124,7 +129,7 @@ def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
     require_company(job.company_id, db, user)
     new_job = Job(**job.model_dump())
     db.add(new_job)
-    commit_job(new_job, db, emit_created=True)
+    commit_job(new_job, db, recipient_id=user.id)
     return new_job
 
 

@@ -83,9 +83,11 @@ jobs:
         run: python3 scripts/smoke_test.py
       - name: Exercise broker and worker failure recovery
         run: python3 scripts/distributed_smoke.py --allow-service-interruption
+      - name: Verify inbox workflow and exported distributed traces
+        run: python3 scripts/notification_smoke.py --allow-service-interruption
       - name: Show API and migration diagnostics on failure
         if: failure()
-        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db
+        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db notification-migrate notification-api jaeger
       - name: Stop disposable stack
         if: always()
         run: docker compose --env-file .env.docker down --volumes

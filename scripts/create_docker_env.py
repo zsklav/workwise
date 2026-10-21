@@ -13,6 +13,7 @@ def main() -> None:
     values = {name: secrets.token_urlsafe(48) for name in (
         "POSTGRES_PASSWORD", "DB_PASSWORD", "MIGRATION_DB_PASSWORD", "JWT_SECRET",
         "RABBITMQ_PASSWORD", "NOTIFICATION_ADMIN_PASSWORD", "NOTIFICATION_DB_PASSWORD",
+        "NOTIFICATION_API_DB_PASSWORD", "NOTIFICATION_SERVICE_SECRET",
     )}
     if arguments.add_missing and destination.exists():
         existing = {line.split("=", 1)[0].strip() for line in destination.read_text(encoding="utf-8").splitlines() if "=" in line}

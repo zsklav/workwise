@@ -10,3 +10,6 @@ PyJWT==2.15.1
 python-multipart==0.0.32
 prometheus-client==0.26.0
 pika==1.4.4
+httpx==0.28.1
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1

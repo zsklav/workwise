@@ -30,7 +30,10 @@ The project was built from scratch; no Java migration is included.
 - Database/schema readiness at `/ready`, separate from process health at `/health`.
 - JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
 - Admin-only Prometheus-format snapshots at `/metrics`.
-- Transactional outbox for `job.created.v1`, a RabbitMQ publisher, and a separate notification worker/database.
+- Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
+- A RabbitMQ publisher, notification worker, and independent notification database/API.
+- Authenticated user inbox, unread filtering and idempotent read markers.
+- OpenTelemetry traces across HTTP, durable outbox, publisher, worker and internal inbox API; Jaeger UI.
 - Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
 - Docker failure demos exercised in CI: broker outage, offline worker, database outage and recovery.
 
@@ -53,6 +56,7 @@ Live cloud deployment is still planned.
 | Tests | Pytest and HTTPX/TestClient |
 | Security | pwdlib/Argon2 and PyJWT |
 | Messaging | RabbitMQ and Pika; separate PostgreSQL notification state |
+| Tracing | OpenTelemetry OTLP/HTTP and Jaeger |
 
 Direct dependencies are pinned to the versions used locally in
 `requirements.txt` and `requirements-dev.txt`. These are not a full transitive
@@ -64,6 +68,7 @@ dependency lockfile.
 flowchart LR
     Client[Client / Swagger] --> API[FastAPI routes]
     API --> Validation[Pydantic schemas]
+    API -->|signed internal HTTP| InboxAPI[Notification API]
     API --> Session[Request database session]
     Session --> ORM[SQLAlchemy Job and Company models]
     ORM --> PostgreSQL[(Jobs + Outbox / PostgreSQL)]
@@ -72,6 +77,7 @@ flowchart LR
     Publisher --> RabbitMQ[Durable RabbitMQ queue]
     RabbitMQ --> Worker[Notification worker]
     Worker --> Notifications[(Independent notification database)]
+    InboxAPI --> Notifications
     Worker --> DLQ[Dead-letter queue]
 ```
 
@@ -135,6 +141,8 @@ docker compose --env-file .env.docker up --build --detach --wait
 
 If `.env.docker` already exists, run `python scripts/create_docker_env.py --add-missing`
 to append new broker/worker keys while preserving existing credentials.
+For an already-running stack, follow the [controlled inbox/tracing upgrade](docs/notifications-tracing.md#schema-upgrades-and-rollout)
+to stop old consumers before enabling v2 events.
 Docker uses separate database volumes, independent of the native
 PostgreSQL setup below. Existing local jobs are not copied into it. Your native
 API can keep using port 8000; Docker docs are at <http://127.0.0.1:8001/docs>.
@@ -406,7 +414,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **233 tests passed** on 2026-10-21. The learner also
+Last verified local checkpoint: **260 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 GitHub [CI runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml) on
@@ -426,11 +434,12 @@ include timestamp, request ID, method, route, status, duration, completion flags
 and exception type where applicable. Unexpected errors before response headers
 return generic 500 JSON and a request ID rather than exception details.
 
-This is an exporter/logging foundation. Counters are in memory per process and
-reset on restart; no Prometheus server, Grafana, alert rules, or external log
-storage is deployed. Metrics use the existing expiring admin JWT for manual
-inspection; continuous scraping needs a later service-auth design. See
-[observability details](docs/observability.md).
+Counters are in memory per process and reset on restart; no Prometheus server,
+Grafana, alert rules or external log storage is deployed. Metrics use the existing
+expiring admin JWT for manual inspection; continuous scraping needs a later
+service-auth design. Docker exports OpenTelemetry traces to Jaeger at
+<http://127.0.0.1:16686>. See [observability details](docs/observability.md) and
+[inbox/tracing workflow](docs/notifications-tracing.md).
 
 ## Current scope and next steps
 
@@ -440,9 +449,10 @@ limits, and version-based concurrency conflict detection remain future work.
 Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Docker, CI, transactional messaging and failure recovery demos are implemented.
-Next: live deployment when a hosting target is selected, followed by external
-notification delivery, retention/monitoring and distributed tracing as needed.
+Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
+failure recovery demos are implemented. Next: monitoring/retention, concurrency
+conflict detection and measured performance work. External email delivery and
+live deployment remain deferred.
 
 ## Engineering notes
 
@@ -451,6 +461,7 @@ notification delivery, retention/monitoring and distributed tracing as needed.
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Docker runtime and CI](docs/docker-ci.md)
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
+- [User notification inbox and distributed tracing](docs/notifications-tracing.md)
 - [Request logs, IDs, and metrics](docs/observability.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

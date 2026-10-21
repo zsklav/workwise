@@ -12,6 +12,7 @@ from uuid import uuid4
 from prometheus_client import CollectorRegistry, Counter, Histogram
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from tracing import trace_id
 
 
 request_id_context: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -28,6 +29,9 @@ class RequestJsonFormatter(logging.Formatter):
         for key in ("request_id", "method", "route", "status", "duration_ms",
                     "response_started", "response_complete", "error_type"):
             event[key] = getattr(record, key, None)
+        identity = trace_id()
+        if identity:
+            event["trace_id"] = identity
         return json.dumps(event, separators=(",", ":"))
 
 

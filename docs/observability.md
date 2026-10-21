@@ -79,9 +79,11 @@ The admin endpoint relies on the database for authentication, so database failur
 can also prevent metric access. Existing 30-minute JWTs support manual snapshots;
 durable automated scraping credentials are not implemented.
 
-No Prometheus server, Grafana, alerting, external error/log storage, or tracing
-exporter is configured. Those are subsequent integrations, not part of this
-checkpoint's verification.
+No Prometheus server, Grafana, alerting or external error/log storage is configured.
+The later [inbox/tracing checkpoint](notifications-tracing.md) adds OpenTelemetry
+OTLP export, W3C propagation across HTTP/outbox/AMQP, trace IDs in logs/responses,
+and a Jaeger demo collector. Trace storage is transient; tracing is disabled when
+the exporter endpoint environment variable is absent.
 
 ## Evidence
 

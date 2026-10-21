@@ -23,13 +23,14 @@ def create_job(client):
     return response.json()
 
 
-def test_job_and_event_committed_together_and_survive_job_delete(db_client, db_session):
+def test_job_and_event_committed_together_and_survive_job_delete(db_client, db_session, auth_user):
     job = create_job(db_client)
     stored = db_session.scalars(select(OutboxEvent)).one()
     assert stored.payload["job_id"] == job["id"]
     assert stored.payload["company_id"] == job["company_id"]
     assert stored.payload["event_id"] == str(stored.id)
-    assert stored.payload["event_type"] == "job.created.v1"
+    assert stored.payload["event_type"] == "job.created.v2"
+    assert stored.payload["recipient_id"] == auth_user.id
     assert stored.published_at is None
     assert db_client.delete(f"/jobs/{job['id']}").status_code == 204
     assert db_session.get(OutboxEvent, stored.id) is not None

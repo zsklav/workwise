@@ -15,6 +15,7 @@ class OutboxEvent(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    trace_context: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
