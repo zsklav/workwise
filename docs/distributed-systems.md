@@ -75,8 +75,10 @@ outbox grants without deleting jobs. For controlled existing-stack upgrades,
 stop `api`/`publisher`/`notification-worker`, build, run `migrate`, then run `up`.
 No native RabbitMQ installation is required. A native-only API also stores events,
 but they remain pending until a publisher is configured for that database.
-Compose health checks cover API/database/broker startup; background process
-progress is verified by the demo rather than an HTTP health check or alerting system.
+Compose health checks cover API/database/broker startup and background process
+loop heartbeats. Publisher/worker update a temporary heartbeat file as their
+loops run; a file older than 45 seconds fails their health check. This is not an
+end-to-end delivery check or alerting system; the demo verifies event processing.
 
 RabbitMQ management is at <http://127.0.0.1:15672> (username `workwise`, password
 from your private `.env.docker`). Queue names are `workwise.notifications.v1`

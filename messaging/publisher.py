@@ -11,6 +11,7 @@ import pika
 from database import engine
 from models import OutboxEvent
 from messaging.broker import BrokerSettings, QUEUE, connect, log, prepare, publish
+from messaging.health import beat
 
 
 def publish_one(session: Session, channel) -> bool:
@@ -37,6 +38,7 @@ def main():
             while connection.is_open:
                 with Session(engine, expire_on_commit=False) as session:
                     worked = publish_one(session, channel)
+                beat()
                 connection.sleep(0 if worked else 1)
         except (pika.exceptions.AMQPError, SQLAlchemyError, OSError) as error:
             log("publisher_retry", error_type=type(error).__name__)

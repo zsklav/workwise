@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from messaging.broker import (BrokerSettings, DLQ, MAX_RETRIES, QUEUE, connect, log, prepare, publish)
 from messaging.events import JobCreated
+from messaging.health import beat
 from messaging.notification_store import EventConflict, NotificationSettings, record_notification, store_engine
 
 
@@ -52,7 +53,9 @@ def main():
             channel.basic_consume(QUEUE, lambda ch, method, props, body: handle(connection, ch, method, props, body, engine),
                                   auto_ack=False)
             log("worker_connected")
-            channel.start_consuming()
+            while connection.is_open:
+                connection.process_data_events(time_limit=1)
+                beat()
         except (pika.exceptions.AMQPError, OSError) as error:
             log("worker_reconnect", error_type=type(error).__name__)
         finally:

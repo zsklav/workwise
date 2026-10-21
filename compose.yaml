@@ -52,7 +52,11 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-m", "messaging.health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 6
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
@@ -72,7 +76,11 @@ services:
       notification-db:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-m", "messaging.health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 6
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
