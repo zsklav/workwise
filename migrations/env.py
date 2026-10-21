@@ -5,8 +5,8 @@ from sqlalchemy.engine import URL
 
 from alembic import context
 
-from models import Base
-from settings import MigrationSettings
+from workwise.db.models import Base
+from workwise.core.config import MigrationSettings
 
 
 settings = MigrationSettings()
