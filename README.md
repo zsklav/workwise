@@ -3,12 +3,16 @@
 A Python backend for managing jobs, built incrementally while learning backend
 engineering, database design, testing, and distributed systems.
 
-This Phase 1 checkpoint contains a working single FastAPI application with
-PostgreSQL persistence. It was built from scratch; no Java migration is included.
+The Phase 1 checkpoint established a working single FastAPI application with
+PostgreSQL persistence. The current Phase 2 checkpoint adds bounded job-list
+pagination and exact company filtering. The
+project was built from scratch; no Java migration is included.
 
 ## Implemented
 
 - Job creation, listing, retrieval, replacement, partial updates, and deletion.
+- Job-list pagination with validated limit/offset and deterministic ID ordering.
+- Optional exact company filtering, applied before pagination.
 - Optional job descriptions with distinct omitted-field and explicit-null behavior.
 - Pydantic input validation and typed response models.
 - SQLAlchemy ORM, request-scoped sessions, and database-generated IDs.
@@ -18,7 +22,7 @@ PostgreSQL persistence. It was built from scratch; no Java migration is included
 - OpenAPI documentation at `/docs`.
 
 Company is currently a text field on a job, not a separate entity or service.
-Authentication, pagination, messaging, containers, and deployment are planned.
+Additional filters, authentication, messaging, containers, and deployment are planned.
 
 ## Stack
 
@@ -144,7 +148,7 @@ python -m uvicorn main:app --reload
 | Method | Path | Purpose | Success |
 |---|---|---|---|
 | GET | `/health` | Process health | 200 |
-| GET | `/jobs` | List jobs in ID order | 200 |
+| GET | `/jobs` | List a page of jobs in ID order | 200 |
 | GET | `/jobs/{job_id}` | Retrieve a job | 200 |
 | POST | `/jobs` | Create a job | 201 |
 | PUT | `/jobs/{job_id}` | Replace editable job fields | 200 |
@@ -171,6 +175,20 @@ PATCH preserves omitted fields. `{"description": null}` clears description;
 explicit nulls for title/company/location and unknown PATCH keys are rejected.
 An empty PATCH body leaves an existing job unchanged.
 
+`GET /jobs` accepts `limit` (default 20, minimum 1, maximum 100) and `offset`
+(default 0, minimum 0). Example: `/jobs?limit=2&offset=1` skips the first row
+and returns up to two jobs. Offsets count rows, not job IDs. The response
+remains a JSON array. Invalid pagination values return 422; an offset beyond
+the available rows returns an empty array. The default response is now bounded
+at twenty rows, so clients must request subsequent pages for larger datasets.
+
+Add `company` for an exact, case-sensitive company-name filter, for example
+`/jobs?company=WorkWise&limit=2&offset=1`. Filtering happens in PostgreSQL before
+pagination: offset counts matching rows. Omit company for all companies, or
+receive an empty array if nothing matches. `company=` is invalid (422). Quotes,
+percent signs, and underscores are treated as literal characters, not SQL or
+wildcard syntax. Company values are passed as bound SQL parameters.
+
 ## Tests
 
 ```powershell
@@ -187,16 +205,17 @@ A separate persistence case uses real commits, checks independent connections,
 and removes only its uniquely marked test row. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified checkpoint: **28 tests passed** on 2026-10-21. The learner also
+Last verified checkpoint: **45 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 ## Current scope and next steps
 
 This is a learning checkpoint, not a production deployment. APIs currently have
-no authentication or ownership checks, list responses are not paginated, and
-concurrency conflict detection has not been implemented.
+no authentication or ownership checks, and concurrency conflict detection has
+not been implemented. Offset pagination is intended for this initial stage;
+large offsets and changes between page requests need later evaluation.
 
-Next: pagination and filtering, a company entity and relationships, authentication
+Next: additional filters, a company entity and relationships, authentication
 and authorization, then packaging and deployment. Messaging, resilience, and
 distributed tracing will follow concrete business workflows.
 

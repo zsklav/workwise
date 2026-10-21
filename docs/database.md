@@ -20,7 +20,7 @@ timeouts beyond connection establishment, and error logging need later work.
 | Method and path | Behavior | Success | Missing job |
 |---|---|---|---|
 | `GET /health` | Process health; no database query | 200 | n/a |
-| `GET /jobs` | Jobs ordered by ID | 200 | Empty list |
+| `GET /jobs` | Page of jobs, optionally filtered by company, ordered by ID | 200 | Empty list |
 | `GET /jobs/{job_id}` | Retrieve a job | 200 | 404 |
 | `POST /jobs` | Create with database-generated ID | 201 | n/a |
 | `PUT /jobs/{job_id}` | Replace title, company, location, description | 200 | 404 |
@@ -41,6 +41,48 @@ existing job. A valid PATCH body targeting an absent job returns 404.
 Invalid bodies and non-integer path IDs return 422. Missing jobs return
 `{"detail": "Job not found"}`. Repeated POSTs create distinct jobs. Authentication
 and concurrency conflict detection have not been added at this checkpoint.
+
+## Phase 2: pagination and company filtering
+
+`GET /jobs` now accepts integer query parameters `limit` and `offset`. Defaults
+are 20 and 0. Limit must be between 1 and 100; offset must be nonnegative.
+Invalid values produce 422 before the query executes. Query validation is
+documented automatically in OpenAPI.
+
+The SQLAlchemy statement applies `order_by(Job.id).offset(offset).limit(limit)`
+before execution. The database returns the requested page; the application
+does not first load every row and slice the Python list. Offsets count rows,
+not IDs, which may contain gaps. Results remain a JSON array with an empty
+array beyond the end. No count or next-page metadata is included yet.
+
+The default changes from all jobs to at most twenty jobs. This intentional
+contract change bounds each response; clients needing all jobs must paginate.
+ID ordering makes pages deterministic for an unchanged dataset. Inserts or
+deletions between requests do not provide a shared snapshot across pages, and
+large offsets may require scanning skipped rows. No performance improvement
+has been measured or claimed; query plans and keyset pagination are later work.
+
+The first pagination test initially failed because the old route ignored the
+query parameters and returned all three rows. It passed after implementation.
+Tests also cover valid bounds, default page size with 21 stored jobs, offsets
+beyond the end, and invalid parameters. This endpoint required no schema change.
+
+Optional `company` query input adds an exact, case-sensitive equality condition
+using `where(Job.company == company)`. Company is not trimmed, normalized, or
+interpreted as a pattern. Omission means all companies; empty text is rejected
+with 422. No matches produce an empty array. Existing company values containing
+quotes, percent signs, or underscores can be selected literally.
+
+The request flow is: validate query parameters, select matching rows, order by
+ID, skip matching rows using offset, and limit the result. SQLAlchemy binds the
+company value as a parameter instead of concatenating it into SQL. Tests verify
+this behavior with normal names, missing/partial/case-different names,
+wildcard characters, and a SQL-like string. This does not replace future
+authentication and authorization work.
+
+No database schema change or company index was introduced. An index should be
+evaluated using measured data and query plans. No query performance benchmark
+has been recorded for this checkpoint.
 
 ## Data and schema
 

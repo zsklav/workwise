@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,8 +20,19 @@ def health_check() -> dict[str, str]:
 
 
 @app.get("/jobs", response_model=list[JobRead])
-def get_jobs(db: DbSession) -> list[Job]:
-    return list(db.scalars(select(Job).order_by(Job.id)).all())
+def get_jobs(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    company: Annotated[
+        str | None, Query(min_length=1, description="Exact company name, case-sensitive")
+    ] = None,
+) -> list[Job]:
+    statement = select(Job).order_by(Job.id)
+    if company is not None:
+        statement = statement.where(Job.company == company)
+    statement = statement.offset(offset).limit(limit)
+    return list(db.scalars(statement).all())
 
 
 @app.get("/jobs/{job_id}", response_model=JobRead)

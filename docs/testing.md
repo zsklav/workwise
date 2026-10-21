@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has twenty-five API cases backed by PostgreSQL, two database
+The current suite has forty-two API cases backed by PostgreSQL, two database
 transaction isolation cases, and one independent-connection persistence case.
 All jobs endpoints now use PostgreSQL.
 
@@ -74,9 +74,20 @@ clearing it through PATCH. PATCH API cases cover title-only updates preserving
 other fields, description replacement/clearing, invalid values and unknown
 keys without data changes, missing jobs, and empty-body no-ops.
 
+Pagination cases verify the requested row window and ID order, valid limits 1
+and 100, offsets beyond the end, a default twenty-row page from 21 stored jobs,
+and six invalid query parameter cases. The default-size test seeds ORM objects
+within the isolated test transaction to avoid unnecessary HTTP setup requests.
+
+Company-filter cases verify exact matching, filtering before pagination,
+case-sensitive and partial-name non-matches, literal wildcard/quote handling,
+SQL-like input as data, and rejection of an empty company value. The first
+company-filter test initially failed because all companies were returned,
+then passed once the query condition was added.
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -v --tb=short` completed with **28 passed**
+On 2026-10-21, `python -m pytest -v --tb=short` completed with **45 passed**
 against local PostgreSQL, including all CRUD endpoints. The command was run
 with access to the local database server outside the restricted agent sandbox.
 
