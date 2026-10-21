@@ -23,12 +23,14 @@ The project was built from scratch; no Java migration is included.
 - PostgreSQL integration tests with transaction isolation and independent-connection
   commit verification.
 - OpenAPI documentation at `/docs`.
+- Signup/login with Argon2 password hashing and expiring JWT bearer tokens.
+- Member/admin roles, company ownership, and authorization for every write.
 
 Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
-Authentication, messaging, containers, and deployment are still planned.
+Messaging, containers, and deployment are still planned.
 
 ## Stack
 
@@ -40,6 +42,7 @@ Authentication, messaging, containers, and deployment are still planned.
 | Database access | SQLAlchemy 2 and Psycopg 3 |
 | Migrations | Alembic |
 | Tests | Pytest and HTTPX/TestClient |
+| Security | pwdlib/Argon2 and PyJWT |
 
 Direct dependencies are pinned to the versions used locally in
 `requirements.txt` and `requirements-dev.txt`. These are not a full transitive
@@ -59,9 +62,18 @@ flowchart LR
 
 ```mermaid
 erDiagram
+    users o|--o{ companies : owns
     companies ||--o{ jobs : has
+    users {
+        int id PK
+        string username UK
+        text password_hash
+        string role
+        boolean is_active
+    }
     companies {
         int id PK
+        int owner_id FK
         string name UK
         text description
     }
@@ -77,6 +89,9 @@ erDiagram
 ```text
 main.py                App and job endpoints
 routers/companies.py   Company CRUD endpoints
+routers/auth.py        Signup, login, and current-user endpoints
+security.py            Password hashing, JWT verification, and ownership checks
+manage_users.py        Local administrator creation command
 schemas.py             Request and response models
 models.py              SQLAlchemy table mappings
 database.py            Shared engine and session dependency
@@ -104,6 +119,16 @@ Copy-Item .env.example .env
 
 Edit `.env` locally with your database passwords. `DB_USER` is the runtime user;
 `MIGRATION_DB_USER` is the schema-management user. `.env` is ignored by Git.
+Generate a signing secret locally and put it in `JWT_SECRET` in `.env`:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Keep this value private and stable across restarts. The API rejects missing,
+short, or example placeholder secrets. Access tokens expire after 30 minutes
+by default (`ACCESS_TOKEN_EXPIRE_MINUTES`). Migration commands do not require
+the JWT configuration.
 
 ### Fresh PostgreSQL databases
 
@@ -149,6 +174,7 @@ to the newly created tables:
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.jobs TO workwise_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
+GRANT SELECT, INSERT ON TABLE public.users TO workwise_app;
 ```
 
 An existing manually created schema needs review and a matching baseline before
@@ -170,6 +196,12 @@ python -m uvicorn main:app --reload
 
 ## API
 
+Health and job/company reads are public. All job/company writes require a
+bearer token. Members manage their own companies and those companies' jobs;
+admins may manage any company/job. Missing/invalid credentials return 401;
+authenticated callers without permission receive 403. Moving a job requires
+permission on both its current company and destination company.
+
 | Method | Path | Purpose | Success |
 |---|---|---|---|
 | GET | `/health` | Process health | 200 |
@@ -185,6 +217,40 @@ python -m uvicorn main:app --reload
 | PUT | `/companies/{company_id}` | Replace editable company fields | 200 |
 | PATCH | `/companies/{company_id}` | Update supplied company fields | 200 |
 | DELETE | `/companies/{company_id}` | Delete a company with no jobs | 204 |
+| POST | `/auth/signup` | Register a member using JSON username/password | 201 |
+| POST | `/auth/login` | Exchange password-grant form credentials for a JWT | 200 |
+| GET | `/auth/me` | Return the authenticated user | 200 |
+
+### Sign in through Swagger
+
+1. Use `POST /auth/signup` with a username and password. Usernames are normalized
+   to lowercase and allow 3–50 letters/digits/underscores. Passwords must contain
+   15–128 characters. Signup always creates a member; role/owner fields are rejected.
+2. Click **Authorize** in `/docs`, enter that username/password, and authorize.
+   Swagger calls `/auth/login` using form fields and `grant_type=password`.
+3. Call `/auth/me`, create your company, then create jobs using its ID. Company
+   ownership is assigned by the server. Public responses do not expose owner IDs.
+
+For direct clients, `/auth/login` accepts form data rather than a JSON body:
+`grant_type=password`, `username`, and `password`. Send the returned token as
+`Authorization: Bearer <access_token>`. The token response includes `expires_in`.
+
+### Existing data and administrator access
+
+Migration 0005 preserves existing jobs/companies with unassigned company owners.
+Only admins may manage those legacy records. Signup cannot claim a legacy
+company or grant admin privileges. To create your first admin locally:
+
+```powershell
+python manage_users.py create-admin workwise_admin
+```
+
+The command uses migration credentials, prompts privately for a password and
+confirmation, and creates a new admin username. It never promotes an existing
+signup or prints/stores a plaintext password. Log in with that admin through
+Swagger to manage legacy data. See [authentication and authorization](docs/auth.md).
+
+### Job and company bodies
 
 First create a company using `POST /companies` (example below), or retrieve
 one using `GET /companies`. Use its actual returned ID in this `POST /jobs` body:
@@ -271,30 +337,31 @@ python -m pytest -v
 Tests explicitly use `workwise_test`, applying Alembic migrations through a
 shared test connection before running. The runtime role owns this separate test
 database, enabling test setup without widening its development permissions.
-The jobs and companies tables must start empty; existing rows are not silently deleted.
+The users, companies, and jobs tables must start empty; existing rows are not silently deleted.
 
 Most cases roll back their changes, including ORM commits through savepoints.
 Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified checkpoint: **135 tests passed** on 2026-10-21. The learner also
+Last verified checkpoint: **201 tests passed** on 2026-10-21. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 ## Current scope and next steps
 
-This is a learning checkpoint, not a production deployment. APIs currently have
-no authentication or ownership checks, and concurrency conflict detection has
-not been implemented. Offset pagination is intended for this initial stage;
+This is a learning checkpoint, not a production deployment. Signup/login and
+ownership checks are implemented. Refresh tokens, password reset, login rate
+limits, and version-based concurrency conflict detection remain future work.
+Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
-Next: authentication and authorization, and packaging
-and deployment. Messaging, resilience, and
+Next: packaging, CI, and deployment. Messaging, resilience, and
 distributed tracing will follow concrete business workflows.
 
 ## Engineering notes
 
 - [Database behavior and API contracts](docs/database.md)
 - [Company APIs and database constraints](docs/companies.md)
+- [Authentication, roles, and ownership](docs/auth.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

@@ -11,8 +11,8 @@ def client(db_client: TestClient) -> TestClient:
 
 
 @pytest.fixture
-def company_ids(db_session: Session) -> dict[str, int]:
-    companies = [Company(name=name) for name in (
+def company_ids(db_session: Session, auth_user) -> dict[str, int]:
+    companies = [Company(name=name, owner_id=auth_user.id) for name in (
         "Example", "WorkWise", "O'Reilly %_ Labs", "OReilly Other Labs",
     )]
     db_session.add_all(companies)

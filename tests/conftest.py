@@ -12,7 +12,12 @@ from sqlalchemy.orm import Session
 
 from database import database_url, get_db
 from main import app
-from models import Base, Company, Job
+from models import Base, Company, Job, User
+from security import create_access_token, password_hasher
+
+
+TEST_PASSWORD = "test password for WorkWise 2026"
+TEST_PASSWORD_HASH = password_hasher.hash(TEST_PASSWORD)
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +37,7 @@ def test_engine() -> Iterator[Engine]:
             inspector = inspect(connection)
             has_managed_tables = any(
                 inspector.has_table(name, schema="public")
-                for name in ("jobs", "companies")
+                for name in ("jobs", "companies", "users")
             )
             if has_managed_tables and not inspector.has_table("alembic_version", schema="public"):
                 raise RuntimeError(
@@ -51,7 +56,7 @@ def test_engine() -> Iterator[Engine]:
             if compare_metadata(migration_context, Base.metadata):
                 raise RuntimeError("Test migrations do not match the ORM models.")
 
-            for model in (Job, Company):
+            for model in (Job, Company, User):
                 if connection.scalar(select(func.count()).select_from(model)) != 0:
                     raise RuntimeError(
                         f"workwise_test.{model.__tablename__} must start empty. "
@@ -83,7 +88,7 @@ def db_session(db_connection: Connection) -> Iterator[Session]:
 
 
 @pytest.fixture
-def db_client(db_connection: Connection) -> Iterator[TestClient]:
+def anonymous_client(db_connection: Connection) -> Iterator[TestClient]:
     def override_get_db() -> Iterator[Session]:
         # Each request gets its own session inside this test's transaction.
         with Session(
@@ -100,3 +105,17 @@ def db_client(db_connection: Connection) -> Iterator[TestClient]:
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)
+
+
+@pytest.fixture
+def auth_user(db_session: Session) -> User:
+    user = User(username="test_owner", password_hash=TEST_PASSWORD_HASH, role="member", is_active=True)
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def db_client(anonymous_client: TestClient, auth_user: User) -> TestClient:
+    anonymous_client.headers["Authorization"] = f"Bearer {create_access_token(auth_user.id)}"
+    return anonymous_client

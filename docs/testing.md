@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 135 cases covering job and company APIs backed by
+The current suite has 201 cases covering auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -36,7 +36,7 @@ adoption; the fixture stops rather than guessing their version. The original
 empty metadata-created test table was checked against revision 0001, stamped,
 and upgraded to the description revision on 2026-10-21.
 
-The jobs and companies tables must start empty. If either contains existing
+The users, jobs, and companies tables must start empty. If any contains existing
 rows, the fixture stops without deleting them.
 
 ## Isolation and cleanup
@@ -46,8 +46,11 @@ rows, the fixture stops without deleting them.
 - `test_engine`: connects only to the dedicated test database.
 - `db_connection`: starts an outer transaction and rolls it back after a test.
 - `db_session`: provides an ORM session using `create_savepoint` transaction mode.
-- `db_client`: overrides FastAPI's `get_db` dependency with a fresh session per
-  request, bound to the test's connection, and restores overrides afterward.
+- `anonymous_client`: overrides FastAPI's `get_db` dependency with a fresh session
+  per request, bound to the test connection, and restores overrides afterward.
+- `auth_user`: creates an isolated member using a valid Argon2 password hash.
+- `db_client`: adds a real signed access token for that member to the anonymous
+  client. Current-user lookup and ownership checks are not overridden.
 
 Session commits release savepoints while the outer transaction remains open.
 The fixture can therefore undo committed test changes at teardown. Identity
@@ -72,6 +75,10 @@ company through PUT, clears description through PATCH, and checks committed
 values through independent connections. It verifies deletion returns 409 while
 linked, then deletes the job and company and confirms the company row is gone.
 Cleanup targets only that case's UUID-marked rows, including the renamed company.
+Both persistence cases now register a uniquely named member and log in through
+the actual form endpoint before making protected writes. Cleanup removes their
+users only after their jobs and companies. A CLI case separately verifies local
+admin creation with password hashing in the test database and removes its user.
 
 Description cases cover text and explicit null input, omitted input, response
 and list output, PUT replacement and omission clearing, and invalid input.
@@ -119,10 +126,24 @@ company, case/whitespace/quote preservation, and downgrade restoration. Invalid
 legacy names abort before schema/data changes. All these DDL/data changes are
 rolled back at teardown; the development database is never downgraded.
 
+Revision 0005 has a separate migration test: legacy company/job data is seeded
+at 0004, then upgraded and verified unchanged with null ownership and no seeded
+users. Downgrade preserves legacy jobs and removes the ownership/user schema.
+
+Auth cases verify signup normalization, duplicate conflicts, Argon2 hashes,
+credential redaction in response/validation errors, password-grant login,
+generic invalid-credential responses, token headers, `/auth/me`, and disabled
+accounts. JWT cases reject expired, premature, malformed, wrongly signed,
+wrong-algorithm, and missing-claim tokens. Authorization cases exercise every
+write route without credentials, other owners' resources, both source and
+destination companies during job moves, immutable owner/role input, admin
+access, and legacy admin-only records. Role comes from the current database row,
+including when a signed token contains an extra admin role claim.
+
 ## Recorded result
 
-On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **135 passed**
-against local PostgreSQL, including job and company CRUD endpoints. The command was run
+On 2026-10-21, `python -m pytest -q -x --tb=short` completed with **201 passed**
+against local PostgreSQL, including auth and job/company CRUD. The command was run
 with access to the local database server outside the restricted agent sandbox.
 
 ## References

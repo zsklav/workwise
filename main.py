@@ -1,6 +1,8 @@
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,18 +11,33 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Company, Job
 from routers.companies import router as companies_router
+from routers.auth import router as auth_router
 from schemas import JobCreate, JobRead, JobUpdate
+from security import CurrentUser, require_company_access
 
 
 app = FastAPI(title="WorkWise API")
 app.include_router(companies_router)
+app.include_router(auth_router)
 
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-def require_company(company_id: int, db: Session) -> None:
-    if db.get(Company, company_id) is None:
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, error: RequestValidationError):
+    if request.url.path.startswith("/auth/"):
+        # Validation errors can otherwise echo raw credentials in their input.
+        errors = [{key: value for key, value in item.items() if key not in {"input", "ctx"}}
+                  for item in error.errors()]
+        error = RequestValidationError(errors)
+    return await request_validation_exception_handler(request, error)
+
+
+def require_company(company_id: int, db: Session, user) -> None:
+    company = db.get(Company, company_id)
+    if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
+    require_company_access(company, user)
 
 
 def commit_job(job: Job, db: Session) -> None:
@@ -70,8 +87,8 @@ def get_job(job_id: int, db: DbSession) -> Job:
 
 
 @app.post("/jobs", status_code=201, response_model=JobRead)
-def create_job(job: JobCreate, db: DbSession) -> Job:
-    require_company(job.company_id, db)
+def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
+    require_company(job.company_id, db, user)
     new_job = Job(**job.model_dump())
     db.add(new_job)
     commit_job(new_job, db)
@@ -79,23 +96,25 @@ def create_job(job: JobCreate, db: DbSession) -> Job:
 
 
 @app.delete("/jobs/{job_id}", status_code=204)
-def delete_job(job_id: int, db: DbSession) -> Response:
+def delete_job(job_id: int, db: DbSession, user: CurrentUser) -> Response:
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    require_company_access(job.employer, user)
     db.delete(job)
     db.commit()
     return Response(status_code=204)
 
 
 @app.put("/jobs/{job_id}", response_model=JobRead)
-def update_job(job_id: int, updated_job: JobCreate, db: DbSession) -> Job:
+def update_job(job_id: int, updated_job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    require_company(updated_job.company_id, db)
+    require_company_access(job.employer, user)
+    require_company(updated_job.company_id, db, user)
     job.title = updated_job.title
     job.company_id = updated_job.company_id
     job.location = updated_job.location
@@ -105,14 +124,15 @@ def update_job(job_id: int, updated_job: JobCreate, db: DbSession) -> Job:
 
 
 @app.patch("/jobs/{job_id}", response_model=JobRead)
-def patch_job(job_id: int, updated_job: JobUpdate, db: DbSession) -> Job:
+def patch_job(job_id: int, updated_job: JobUpdate, db: DbSession, user: CurrentUser) -> Job:
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    require_company_access(job.employer, user)
     changes = updated_job.model_dump(exclude_unset=True)
     if "company_id" in changes:
-        require_company(changes["company_id"], db)
+        require_company(changes["company_id"], db, user)
     if changes:
         for field, value in changes.items():
             setattr(job, field, value)

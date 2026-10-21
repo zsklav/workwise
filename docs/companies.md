@@ -4,6 +4,10 @@ Companies are stored in `public.companies`. Jobs store a required `company_id`
 referencing `companies.id`. One company can have many jobs. Creating a company
 does not create jobs; deleting a job does not remove its company.
 
+All writes now require login. New companies belong to their creating user;
+only that owner or an admin may manage the company and its jobs. Existing
+unowned companies remain admin-only. Reads stay public. See [auth rules](auth.md).
+
 ## API
 
 | Method | Path | Behavior |
@@ -94,18 +98,19 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.companies TO workwise_app;
 Revision 0004 preserved all three development jobs and backfilled two companies.
 Before/after snapshots compared job IDs, titles, exact company names, locations,
 and descriptions. The schema matched the ORM after migration. The full
-PostgreSQL suite passed with 135 cases, including relation constraints,
+PostgreSQL suite passed with 201 cases, including authentication, ownership, relation constraints,
 reassignment, legacy-name backfill, downgrade restoration, and rejected legacy
 data without partial schema changes. Company mutation cases additionally cover
 rename propagation, duplicate rollback, validation, description semantics,
 restricted deletion and retries. A second real-commit test verifies company
 changes and deletion through independent connections. This step required no
-schema migration; runtime UPDATE/DELETE permissions were granted separately.
+schema migration for the earlier company-mutation step; revision 0005 later
+adds users and ownership. Runtime UPDATE/DELETE permissions were granted separately.
 See [testing notes](testing.md).
 
 ## Next step
 
-Authentication and ownership checks remain later work. Concurrent rename
+Authentication and ownership checks are implemented. Concurrent rename
 conflict detection beyond the unique constraint has not been added; updates
 do not yet use version fields or conditional requests.
 

@@ -64,3 +64,29 @@ def test_invalid_legacy_names_abort_backfill_without_schema_or_data_changes(db_c
     assert db_connection.scalar(text("SELECT company FROM public.jobs")) == name
     assert db_connection.scalar(text("SELECT count(*) FROM public.companies")) == 0
     assert "company_id" not in {column["name"] for column in inspect(db_connection).get_columns("jobs", schema="public")}
+
+
+def test_user_migration_preserves_legacy_records_without_granting_ownership(db_connection):
+    config = migration_config(db_connection)
+    command.downgrade(config, "0004")
+    company_id = db_connection.scalar(text("""
+        INSERT INTO public.companies (name, description)
+        VALUES ('Legacy auth company', 'Preserve description') RETURNING id
+    """))
+    db_connection.execute(text("""
+        INSERT INTO public.jobs (title, company_id, location, description)
+        VALUES ('Legacy auth job', :company_id, 'Remote', 'Preserve job')
+    """), {"company_id": company_id})
+    before = [dict(row) for row in db_connection.execute(text("SELECT * FROM public.jobs ORDER BY id")).mappings()]
+
+    command.upgrade(config, "0005")
+
+    assert db_connection.scalar(text("SELECT count(*) FROM public.users")) == 0
+    stored = db_connection.execute(text("SELECT * FROM public.companies")).mappings().one()
+    assert dict(stored) == {"id": company_id, "name": "Legacy auth company",
+                            "description": "Preserve description", "owner_id": None}
+    assert [dict(row) for row in db_connection.execute(text("SELECT * FROM public.jobs ORDER BY id")).mappings()] == before
+
+    command.downgrade(config, "0004")
+    assert not inspect(db_connection).has_table("users", schema="public")
+    assert [dict(row) for row in db_connection.execute(text("SELECT * FROM public.jobs ORDER BY id")).mappings()] == before

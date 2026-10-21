@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Company
 from schemas import CompanyCreate, CompanyRead, CompanyUpdate
+from security import CurrentUser, require_company_access
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -45,8 +46,8 @@ def commit_company(db: Session) -> None:
 
 
 @router.post("", status_code=201, response_model=CompanyRead)
-def create_company(company: CompanyCreate, db: DbSession) -> Company:
-    new_company = Company(**company.model_dump())
+def create_company(company: CompanyCreate, db: DbSession, user: CurrentUser) -> Company:
+    new_company = Company(**company.model_dump(), owner_id=user.id)
     db.add(new_company)
     commit_company(db)
     db.refresh(new_company)
@@ -69,8 +70,9 @@ def get_company(company_id: int, db: DbSession) -> Company:
 
 
 @router.put("/{company_id}", response_model=CompanyRead)
-def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSession) -> Company:
+def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSession, user: CurrentUser) -> Company:
     company = find_company(company_id, db)
+    require_company_access(company, user)
     company.name = updated_company.name
     company.description = updated_company.description
     commit_company(db)
@@ -79,8 +81,9 @@ def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSessi
 
 
 @router.patch("/{company_id}", response_model=CompanyRead)
-def patch_company(company_id: int, updated_company: CompanyUpdate, db: DbSession) -> Company:
+def patch_company(company_id: int, updated_company: CompanyUpdate, db: DbSession, user: CurrentUser) -> Company:
     company = find_company(company_id, db)
+    require_company_access(company, user)
     changes = updated_company.model_dump(exclude_unset=True)
     if changes:
         for field, value in changes.items():
@@ -91,8 +94,9 @@ def patch_company(company_id: int, updated_company: CompanyUpdate, db: DbSession
 
 
 @router.delete("/{company_id}", status_code=204)
-def delete_company(company_id: int, db: DbSession) -> Response:
+def delete_company(company_id: int, db: DbSession, user: CurrentUser) -> Response:
     company = find_company(company_id, db)
+    require_company_access(company, user)
     db.delete(company)
     commit_company(db)
     return Response(status_code=204)

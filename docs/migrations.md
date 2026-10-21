@@ -158,6 +158,31 @@ runtime role separately from Alembic. Existing SELECT/INSERT permissions remain.
 Fresh installations should use the complete company CRUD grant in the README.
 The application still has no schema-management privileges.
 
+## Users and ownership: revision 0005
+
+Revision 0005 adds `public.users` with identity IDs, unique canonical usernames,
+password hashes, constrained member/admin roles (default member), and active
+status (default true). It adds nullable `companies.owner_id` with an indexed,
+restricted foreign key to users. Jobs remain linked to their company and inherit
+the company's authorization rules in the API.
+
+On 2026-10-21 the test suite passed 201 cases, including migration up/down with
+legacy rows and no automatically assigned ownership. The development upgrade
+then compared snapshots of all three jobs and two companies, preserving every
+existing field and adding only null owner IDs. No users or admin credentials
+were seeded. Schema comparison and `alembic check` found no pending operations.
+
+Runtime SELECT/INSERT on users was granted separately; user UPDATE/DELETE was
+not granted. Trusted local admin creation uses migration credentials via
+`manage_users.py create-admin`. Signup always creates members. Runtime signup,
+login, bearer authentication, owned writes, denied legacy writes, and linked
+deletion conflicts were verified in an outer rollback transaction. Temporary
+users and data were rolled back, and existing snapshots were unchanged.
+
+Downgrade removes ownership metadata and users, including their credential
+hashes, while preserving jobs and companies. It is destructive to account data
+and was tested only in rollback transactions in `workwise_test`.
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)

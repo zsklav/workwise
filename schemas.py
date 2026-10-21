@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 class JobCreate(BaseModel):
@@ -80,3 +82,30 @@ class CompanyUpdate(BaseModel):
         if value is None:
             raise ValueError("Name must not be null")
         return value
+
+
+class UserSignup(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    username: str = Field(min_length=3, max_length=50, pattern=r"^[a-z0-9_]+$")
+    password: SecretStr = Field(min_length=15, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    role: Literal["member", "admin"]
+    is_active: bool
+
+
+class TokenRead(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int

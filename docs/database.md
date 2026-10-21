@@ -46,7 +46,8 @@ from silently succeeding. An empty PATCH body is a successful no-op for an
 existing job. A valid PATCH body targeting an absent job returns 404.
 Invalid bodies and non-integer path IDs return 422. Missing jobs return
 `{"detail": "Job not found"}`. Repeated POSTs create distinct jobs. Authentication
-and concurrency conflict detection have not been added at this checkpoint.
+and ownership checks now protect writes, while reads stay public. Version-based
+concurrency conflict detection has not been added. See [access rules](auth.md).
 
 ## Phase 2: pagination and company filtering
 
@@ -115,6 +116,13 @@ uses the connection's default `public` schema for both models and foreign keys,
 matching PostgreSQL's reflected default-schema names during Alembic comparison.
 Migrations still explicitly target `public`.
 See [Company APIs and constraints](companies.md).
+
+Revision 0005 adds users and nullable company owner IDs. New company ownership
+is assigned by the authenticated user; existing rows remain unowned and admin-only.
+Jobs inherit permissions from the linked company. Source and destination
+permissions are both checked before moving a job. Users hold Argon2 password
+hashes, constrained member/admin roles, and active status. No default users or
+admin credentials are seeded.
 
 ## PATCH learning checkpoint
 

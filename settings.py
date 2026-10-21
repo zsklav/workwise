@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,3 +22,17 @@ class Settings(BaseSettings):
 class MigrationSettings(Settings):
     migration_db_user: str = "workwise_migrator"
     migration_db_password: SecretStr
+
+
+class AuthSettings(Settings):
+    jwt_secret: SecretStr = Field(min_length=32)
+    jwt_issuer: str = "workwise"
+    jwt_audience: str = "workwise-api"
+    access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def reject_placeholder_secret(cls, value: SecretStr) -> SecretStr:
+        if value.get_secret_value().startswith("replace_"):
+            raise ValueError("Generate a random JWT_SECRET before starting the API")
+        return value

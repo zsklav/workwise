@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from main import app
-from models import Company, Job
+from models import Company, Job, User
 
 
 def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
     # This case uses real commits in workwise_test instead of rollback fixtures.
     marker = f"Persistence check {uuid4()}"
+    username = f"persist_{uuid4().hex}"
     payload = {
         "title": marker,
         "location": "Remote",
@@ -28,6 +29,16 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
 
     try:
         with TestClient(app) as client:
+            signup = client.post("/auth/signup", json={
+                "username": username, "password": "Persistence test password 2026!",
+            })
+            assert signup.status_code == 201
+            login = client.post("/auth/login", data={
+                "grant_type": "password", "username": username,
+                "password": "Persistence test password 2026!",
+            })
+            assert login.status_code == 200
+            client.headers["Authorization"] = "Bearer " + login.json()["access_token"]
             company = client.post("/companies", json={"name": marker})
             assert company.status_code == 201
             payload["company_id"] = company.json()["id"]
@@ -81,10 +92,12 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
         with test_engine.begin() as connection:
             connection.execute(delete(Job).where(Job.title == marker))
             connection.execute(delete(Company).where(Company.name == marker))
+            connection.execute(delete(User).where(User.username == username))
 
 
 def test_company_rename_and_delete_commits_visible_to_independent_connections(test_engine: Engine):
     marker = f"Company persistence {uuid4()}"
+    username = f"persist_{uuid4().hex}"
     renamed = f"{marker} renamed"
 
     def override_get_db() -> Iterator[Session]:
@@ -95,6 +108,16 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
     app.dependency_overrides[get_db] = override_get_db
     try:
         with TestClient(app) as client:
+            signup = client.post("/auth/signup", json={
+                "username": username, "password": "Persistence test password 2026!",
+            })
+            assert signup.status_code == 201
+            login = client.post("/auth/login", data={
+                "grant_type": "password", "username": username,
+                "password": "Persistence test password 2026!",
+            })
+            assert login.status_code == 200
+            client.headers["Authorization"] = "Bearer " + login.json()["access_token"]
             company = client.post("/companies", json={"name": marker})
             assert company.status_code == 201
             company_id = company.json()["id"]
@@ -114,7 +137,7 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
             assert cleared.status_code == 200
             with test_engine.connect() as connection:
                 stored = connection.execute(select(Company.__table__).where(Company.id == company_id)).mappings().one()
-                assert dict(stored) == {"id": company_id, "name": renamed, "description": None}
+                assert dict(stored) == {"id": company_id, "name": renamed, "description": None, "owner_id": signup.json()["id"]}
 
             assert client.delete(path).status_code == 409
             with test_engine.connect() as connection:
@@ -131,3 +154,4 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
         with test_engine.begin() as connection:
             connection.execute(delete(Job).where(Job.title == marker))
             connection.execute(delete(Company).where(Company.name.in_([marker, renamed])))
+            connection.execute(delete(User).where(User.username == username))
