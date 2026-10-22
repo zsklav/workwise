@@ -110,6 +110,11 @@ runner. Never mount the native PostgreSQL data directory into this stack.
 
 ## CI
 
+The container job enables the optional `monitoring` profile and verifies actual
+Prometheus scrapes, provisioned Grafana, alert-rule tests, a real consumer alert
+firing/resolving, and safe retention on synthetic rows. See [monitoring and
+retention](monitoring-retention.md) for ports, credentials and operator commands.
+
 `.github/workflows/ci.yml` runs on pushes/PRs to main and manual dispatch,
 with read-only repository permission and a timeout on each job. It has two jobs:
 

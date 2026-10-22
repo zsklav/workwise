@@ -1,0 +1,98 @@
+rule_files:
+  - /etc/prometheus/alerts.yml
+evaluation_interval: 10s
+tests:
+  - interval: 10s
+    input_series:
+      - series: 'up{job="workwise-api"}'
+        values: '0+0x40'
+      - series: 'workwise_database_up{job="workwise-inbox"}'
+        values: '0+0x40'
+      - series: 'workwise_outbox_oldest_seconds{job="workwise-api"}'
+        values: '300+0x40'
+      - series: 'rabbitmq_queue_messages_ready{queue="workwise.notifications.dead.v1"}'
+        values: '1+0x40'
+      - series: 'rabbitmq_queue_messages_ready{queue="workwise.notifications.v1"}'
+        values: '200+0x40'
+      - series: 'rabbitmq_queue_consumers{queue="workwise.notifications.v1"}'
+        values: '0+0x40'
+      - series: 'workwise_http_requests_total{job="workwise-api",status="500"}'
+        values: '0+10x40'
+      - series: 'workwise_http_requests_total{job="workwise-api",status="200"}'
+        values: '0+90x40'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ScrapeTargetDown
+        exp_alerts:
+          - exp_labels: {job: workwise-api, severity: critical}
+            exp_annotations:
+              summary: Monitoring cannot scrape workwise-api
+              description: Check service health, networking and scrape credentials.
+      - eval_time: 6m
+        alertname: DatabaseUnavailable
+        exp_alerts:
+          - exp_labels: {job: workwise-inbox, severity: critical}
+            exp_annotations:
+              summary: Database inspection failed for workwise-inbox
+              description: Database is unavailable, busy or the aggregate query timed out.
+      - eval_time: 6m
+        alertname: OutboxDelayed
+        exp_alerts:
+          - exp_labels: {job: workwise-api, severity: warning}
+            exp_annotations:
+              summary: Oldest unpublished event is over two minutes old
+              description: Inspect publisher health, PostgreSQL locks and RabbitMQ connectivity.
+      - eval_time: 6m
+        alertname: NotificationConsumerMissing
+        exp_alerts:
+          - exp_labels: {queue: workwise.notifications.v1, severity: critical}
+            exp_annotations:
+              summary: Notification queue has no consumer
+              description: Inspect and restart the worker after fixing its database or broker connection.
+      - eval_time: 6m
+        alertname: NotificationQueueBacklog
+        exp_alerts:
+          - exp_labels: {queue: workwise.notifications.v1, severity: warning}
+            exp_annotations:
+              summary: Notification queue has over 100 waiting messages
+              description: Check worker throughput and notification database health.
+      - eval_time: 6m
+        alertname: DeadLettersPresent
+        exp_alerts:
+          - exp_labels: {queue: workwise.notifications.dead.v1, severity: warning}
+            exp_annotations:
+              summary: Dead-letter queue needs operator review
+              description: Inspect failures and replay selected events after fixing the cause.
+      - eval_time: 6m
+        alertname: HttpServerErrors
+        exp_alerts:
+          - exp_labels: {job: workwise-api, severity: warning}
+            exp_annotations:
+              summary: Over 5% HTTP server errors for workwise-api
+              description: Inspect request logs and traces; requires at least 10 requests in five minutes.
+  - interval: 10s
+    input_series:
+      - series: 'up{job="workwise-api"}'
+        values: '1+0x70'
+      - series: 'workwise_database_up{job="workwise-api"}'
+        values: '1+0x70'
+      - series: 'workwise_outbox_oldest_seconds{job="workwise-api"}'
+        values: '0+0x70'
+      - series: 'rabbitmq_queue_messages_ready{queue="workwise.notifications.dead.v1"}'
+        values: '0+0x70'
+      - series: 'rabbitmq_queue_messages_ready{queue="workwise.notifications.v1"}'
+        values: '0+0x70'
+      - series: 'rabbitmq_queue_consumers{queue="workwise.notifications.v1"}'
+        values: '1+0x70'
+      - series: 'workwise_http_requests_total{job="workwise-api",status="500"}'
+        values: '0+0x70'
+      - series: 'workwise_http_requests_total{job="workwise-api",status="200"}'
+        values: '0+10x70'
+    alert_rule_test:
+      - {eval_time: 10m, alertname: ScrapeTargetDown, exp_alerts: []}
+      - {eval_time: 10m, alertname: DatabaseUnavailable, exp_alerts: []}
+      - {eval_time: 10m, alertname: OutboxDelayed, exp_alerts: []}
+      - {eval_time: 10m, alertname: NotificationConsumerMissing, exp_alerts: []}
+      - {eval_time: 10m, alertname: NotificationQueueBacklog, exp_alerts: []}
+      - {eval_time: 10m, alertname: DeadLettersPresent, exp_alerts: []}
+      - {eval_time: 10m, alertname: HttpServerErrors, exp_alerts: []}

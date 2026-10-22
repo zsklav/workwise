@@ -1,6 +1,116 @@
 name: workwise-docker
 
 services:
+  monitoring-secrets:
+    image: workwise-api:local
+    build: .
+    profiles: [monitoring]
+    user: "0:0"
+    command: ["python", "-m", "scripts.docker.monitoring_secrets"]
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?Add missing .env.docker keys}
+    volumes:
+      - monitoring_secrets:/secrets
+    healthcheck:
+      disable: true
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=7d", "--storage.tsdb.retention.size=512MB"]
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./docker/monitoring/alerts.test.yml:/etc/prometheus/alerts.test.yml:ro
+      - monitoring_secrets:/etc/prometheus/secrets:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      monitoring-secrets:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_USER: workwise_admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Add missing .env.docker keys}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_PLUGINS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  retention-outbox:
+    image: workwise-api:local
+    build: .
+    profiles: [tools]
+    command: ["python", "-m", "workwise.operations.retention", "outbox"]
+    environment:
+      DB_HOST: db
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Generate .env.docker first}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
+  retention-inbox:
+    image: workwise-api:local
+    build: .
+    profiles: [tools]
+    command: ["python", "-m", "workwise.operations.retention", "inbox"]
+    environment:
+      NOTIFICATION_ADMIN_PASSWORD: ${NOTIFICATION_ADMIN_PASSWORD:?Generate .env.docker first}
+      NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
+    depends_on:
+      notification-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
     ports:
@@ -26,6 +136,7 @@ services:
     environment:
       NOTIFICATION_API_DB_PASSWORD: ${NOTIFICATION_API_DB_PASSWORD:?Add missing .env.docker keys}
       NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:?Add missing .env.docker keys}
+      METRICS_TOKEN: ${METRICS_TOKEN:?Add missing .env.docker keys}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     depends_on:
       notification-migrate:
@@ -44,6 +155,7 @@ services:
     hostname: rabbitmq
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     ports:
       - "127.0.0.1:15672:15672"
     healthcheck:
@@ -191,6 +303,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
       JWT_SECRET: ${JWT_SECRET:?Generate .env.docker first}
       NOTIFICATION_SERVICE_URL: http://notification-api:8000
+      METRICS_TOKEN: ${METRICS_TOKEN:?Add missing .env.docker keys}
       NOTIFICATION_SERVICE_SECRET: ${NOTIFICATION_SERVICE_SECRET:?Add missing .env.docker keys}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     ports:
@@ -208,6 +321,9 @@ services:
     restart: unless-stopped
 
 volumes:
+  monitoring_secrets:
+  prometheus_data:
+  grafana_data:
   postgres_data:
   notification_data:
   rabbitmq_data:

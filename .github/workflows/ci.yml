@@ -68,6 +68,8 @@ jobs:
   containers:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      COMPOSE_PROFILES: monitoring
     steps:
       - uses: actions/checkout@v6
       - name: Generate disposable credentials
@@ -83,13 +85,19 @@ jobs:
         run: python3 -m scripts.smoke.api
       - name: Verify concurrent HTTP writes
         run: python3 -m scripts.smoke.concurrency
+      - name: Validate monitoring configuration and alert rules
+        run: |
+          docker compose --env-file .env.docker exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+          docker compose --env-file .env.docker exec -T prometheus promtool test rules /etc/prometheus/alerts.test.yml
       - name: Exercise broker and worker failure recovery
         run: python3 -m scripts.smoke.distributed --allow-service-interruption
       - name: Verify inbox workflow and exported distributed traces
         run: python3 -m scripts.smoke.notifications --allow-service-interruption
+      - name: Verify monitoring, alerts and retention through running services
+        run: python3 -m scripts.smoke.monitoring --allow-service-interruption
       - name: Show API and migration diagnostics on failure
         if: failure()
-        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db notification-migrate notification-api jaeger
+        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db notification-migrate notification-api jaeger monitoring-secrets prometheus grafana
       - name: Stop disposable stack
         if: always()
         run: docker compose --env-file .env.docker down --volumes

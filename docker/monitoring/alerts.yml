@@ -1,0 +1,59 @@
+groups:
+  - name: workwise
+    rules:
+      - alert: ScrapeTargetDown
+        expr: up{job=~"workwise-api|workwise-inbox|rabbitmq"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Monitoring cannot scrape {{ $labels.job }}"
+          description: "Check service health, networking and scrape credentials."
+      - alert: DatabaseUnavailable
+        expr: workwise_database_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database inspection failed for {{ $labels.job }}"
+          description: "Database is unavailable, busy or the aggregate query timed out."
+      - alert: OutboxDelayed
+        expr: workwise_outbox_oldest_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Oldest unpublished event is over two minutes old"
+          description: "Inspect publisher health, PostgreSQL locks and RabbitMQ connectivity."
+      - alert: NotificationQueueBacklog
+        expr: rabbitmq_queue_messages_ready{queue="workwise.notifications.v1"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification queue has over 100 waiting messages"
+          description: "Check worker throughput and notification database health."
+      - alert: NotificationConsumerMissing
+        expr: rabbitmq_queue_consumers{queue="workwise.notifications.v1"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Notification queue has no consumer"
+          description: "Inspect and restart the worker after fixing its database or broker connection."
+      - alert: DeadLettersPresent
+        expr: rabbitmq_queue_messages_ready{queue="workwise.notifications.dead.v1"} > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead-letter queue needs operator review"
+          description: "Inspect failures and replay selected events after fixing the cause."
+      - alert: HttpServerErrors
+        expr: (sum by (job) (rate(workwise_http_requests_total{status=~"5.."}[5m])) / sum by (job) (rate(workwise_http_requests_total[5m])) > 0.05) and (sum by (job) (increase(workwise_http_requests_total[5m])) >= 10)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over 5% HTTP server errors for {{ $labels.job }}"
+          description: "Inspect request logs and traces; requires at least 10 requests in five minutes."

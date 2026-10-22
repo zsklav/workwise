@@ -18,12 +18,14 @@ Run the commands below from the repository root with the virtual environment act
 | `workwise/messaging/` | Event contracts, broker operations, outbox publisher, consumer, heartbeat and replay. |
 | `workwise/notifications/` | Independent inbox API, service-token contracts, notification storage and schema upgrade. |
 | `workwise/cli/` | Local admin creation, read-only database check and historical baseline helper. |
+| `workwise/operations/` | Service scrape authentication/aggregates and bounded retention CLI. |
 | `scripts/database/` | Privileged jobs/notification migration runners and runtime grants. |
 | `scripts/docker/` | Generate or extend ignored Docker configuration without exposing secrets. |
 | `scripts/smoke/` | Executable API, failure-recovery and inbox/tracing demos for disposable stacks. |
 | `tests/` | `api`, `db`, `messaging`, `notifications`, `observability`, `cli` test groups; shared root fixtures. |
 | `migrations/` | Existing jobs Alembic revision history and environment. |
 | `docker/` | Database initialization scripts mounted by Compose. |
+| `docker/monitoring/` | Prometheus scrape/alert configuration, rule tests and provisioned Grafana dashboard. |
 | `docs/` | Design explanations, setup, guarantees and operational instructions. |
 
 Jobs and inbox storage remain separate. The inbox's storage module now belongs

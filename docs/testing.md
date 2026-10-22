@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 305 cases covering concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 324 cases covering retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -21,6 +21,13 @@ Independent ORM sessions also verify stale DELETE rejection. The version
 migration test checks legacy data, defaults, constraints and downgrade in a
 rollback transaction. The Docker CI job runs `python -m scripts.smoke.concurrency`
 against the actual HTTP server. See [guarantees and demo](concurrency.md).
+
+Monitoring/retention cases cover separate scraping credentials, database failure
+without losing HTTP metrics, aggregate values, safe token-file initialization,
+preview/apply behavior, cutoff boundaries, rollback, concurrent cleaner locks,
+and deduplication after inbox cleanup. Docker CI also uses Prometheus `promtool`
+rule tests and verifies actual scrape data, provisioned Grafana and a worker
+alert firing/resolving. See [monitoring/retention](monitoring-retention.md).
 
 ## PostgreSQL setup
 

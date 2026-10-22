@@ -7,13 +7,15 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import Field, SecretStr
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from workwise.notifications.store import NotificationSettings, store_engine
 from workwise.notifications.contracts import NotificationRead, service_subject
-from workwise.core.observability import ObservabilityMiddleware
+from workwise.core.observability import ObservabilityMiddleware, http_metrics
 from workwise.core.tracing import TracingMiddleware, configure_tracing
+from workwise.operations.metrics import Scraper, database_metrics, inspection_engine
 
 
 class Settings(NotificationSettings):
@@ -30,6 +32,11 @@ def settings():
 @lru_cache
 def database():
     return store_engine(settings())
+
+
+@lru_cache
+def monitoring_database():
+    return inspection_engine(database().url)
 
 
 def get_connection():
@@ -59,6 +66,12 @@ app.add_middleware(TracingMiddleware)
 Subject = Annotated[int, Depends(current_subject)]
 Connection = Annotated[object, Depends(get_connection, scope="function")]
 FIELDS = "event_id, job_id, company_id, message, occurred_at, created_at, read_at"
+
+
+@app.get("/internal/metrics", include_in_schema=False)
+def service_metrics(scraper: Scraper):
+    content = generate_latest(http_metrics.registry) + database_metrics(monitoring_database(), "inbox")
+    return Response(content=content, media_type=CONTENT_TYPE_LATEST, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")

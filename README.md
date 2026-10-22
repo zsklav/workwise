@@ -31,6 +31,8 @@ The project was built from scratch; no Java migration is included.
 - Database/schema readiness at `/ready`, separate from process health at `/health`.
 - JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
 - Admin-only Prometheus-format snapshots at `/metrics`.
+- Optional Prometheus/Grafana stack, service scrape credentials, dashboard and alert rules.
+- Bounded retention previews/cleanup preserving pending events, unread inbox items and receipts.
 - Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
 - A RabbitMQ publisher, notification worker, and independent notification database/API.
 - Authenticated user inbox, unread filtering and idempotent read markers.
@@ -426,7 +428,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **305 tests passed** on 2026-10-22. This includes
+Last verified local checkpoint: **324 tests passed** on 2026-10-22. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
@@ -447,10 +449,11 @@ include timestamp, request ID, method, route, status, duration, completion flags
 and exception type where applicable. Unexpected errors before response headers
 return generic 500 JSON and a request ID rather than exception details.
 
-Counters are in memory per process and reset on restart; no Prometheus server,
-Grafana, alert rules or external log storage is deployed. Metrics use the existing
-expiring admin JWT for manual inspection; continuous scraping needs a later
-service-auth design. Docker exports OpenTelemetry traces to Jaeger at
+Counters are in memory per process and reset on restart. The optional Compose
+`monitoring` profile adds Prometheus/Grafana, a provisioned dashboard, service
+scrape credentials and evaluated alert rules. External log storage and external
+alert delivery are not configured. See [monitoring and retention](docs/monitoring-retention.md).
+Docker exports OpenTelemetry traces to Jaeger at
 <http://127.0.0.1:16686>. See [observability details](docs/observability.md) and
 [inbox/tracing workflow](docs/notifications-tracing.md).
 
@@ -464,8 +467,8 @@ Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
 Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
-failure recovery demos are implemented. Next: monitoring/retention and measured
-performance work. External email delivery and
+failure recovery demos, monitoring and operator retention tools are implemented.
+Next: measured performance work and security hardening. External email delivery and
 live deployment remain deferred.
 
 ## Engineering notes
@@ -479,5 +482,6 @@ live deployment remain deferred.
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
 - [User notification inbox and distributed tracing](docs/notifications-tracing.md)
 - [Request logs, IDs, and metrics](docs/observability.md)
+- [Monitoring dashboard, alert rules and safe retention](docs/monitoring-retention.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

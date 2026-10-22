@@ -1,8 +1,9 @@
 # Request logs and metrics
 
 WorkWise emits one structured HTTP request event and exposes aggregate metrics
-for administrative inspection. This checkpoint does not install a monitoring
-backend or claim measured performance improvements.
+for administrative inspection. The later [monitoring/retention checkpoint](monitoring-retention.md)
+adds Prometheus/Grafana, service scrape credentials, live database/queue gauges
+and alert rules. No measured performance improvement is claimed.
 
 ## Request IDs and logs
 
@@ -77,9 +78,11 @@ The current Docker/Uvicorn configuration uses one worker. Multiple workers
 require a deliberate collection/aggregation design before interpreting results.
 The admin endpoint relies on the database for authentication, so database failure
 can also prevent metric access. Existing 30-minute JWTs support manual snapshots;
-durable automated scraping credentials are not implemented.
+automated scraping instead uses separate service credentials as described in
+[monitoring](monitoring-retention.md).
 
-No Prometheus server, Grafana, alerting or external error/log storage is configured.
+Prometheus, Grafana and evaluated alert rules are now available in the optional
+monitoring profile. External alert delivery and error/log storage are not configured.
 The later [inbox/tracing checkpoint](notifications-tracing.md) adds OpenTelemetry
 OTLP export, W3C propagation across HTTP/outbox/AMQP, trace IDs in logs/responses,
 and a Jaeger demo collector. Trace storage is transient; tracing is disabled when

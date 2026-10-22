@@ -56,7 +56,9 @@ cover different boundaries. This stack has **one broker node**, not broker HA;
 deleting its volume or losing the disk can lose queued events. The outbox history
 is retained, but automatic recovery of already-published rows after storage loss
 is not implemented. There is no global event order, distributed transaction,
-automatic failover, outbox retention job, autoscaling, or cross-service query yet.
+automatic failover, autoscaling, or cross-service query yet. Published outbox
+history can now be removed through [explicit bounded retention batches](monitoring-retention.md);
+unpublished events and deduplication receipts are preserved.
 Delivery order may change across retries or multiple publishers/workers.
 
 ## Start or upgrade the Docker demo
