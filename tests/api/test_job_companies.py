@@ -27,11 +27,11 @@ def test_job_can_move_to_another_company(db_client, company_pair, method):
     if method == "put":
         changes = {**payload, **changes}
 
-    response = db_client.request(method, f"/jobs/{job_id}", json=changes)
+    response = db_client.request(method, f"/jobs/{job_id}", json={"version": 1, **changes})
 
     assert response.status_code == 200
     expected = {
-        "id": job_id, **payload, "company_id": second["id"],
+        "id": job_id, "version": 2, **payload, "company_id": second["id"],
         "company": second["name"], "description": None,
     }
     assert response.json() == expected
@@ -52,6 +52,8 @@ def test_missing_company_rejected_without_changing_job(db_client, company_pair, 
     invalid = {**payload, "company_id": missing_id, "title": "Should not change"}
     path = "/jobs" if method == "post" else f"/jobs/{job_id}"
 
+    if method in ("put", "patch"):
+        invalid["version"] = 1
     response = db_client.request(method, path, json=invalid)
 
     assert response.status_code == 404
@@ -67,6 +69,8 @@ def test_invalid_company_ids_rejected(db_client, company_pair, method, value):
     assert created.status_code == 201
     path = "/jobs" if method == "post" else f"/jobs/{created.json()['id']}"
 
+    if method in ("put", "patch"):
+        payload["version"] = 1
     response = db_client.request(method, path, json={**payload, "company_id": value})
 
     assert response.status_code == 422
@@ -80,6 +84,8 @@ def test_old_company_text_input_is_explicitly_rejected(db_client, company_pair, 
     assert created.status_code == 201
     path = "/jobs" if method == "post" else f"/jobs/{created.json()['id']}"
 
+    if method in ("put", "patch"):
+        payload["version"] = 1
     response = db_client.request(method, path, json={**payload, "company": "Ignored?"})
 
     assert response.status_code == 422
@@ -141,5 +147,5 @@ def test_deleting_a_job_keeps_its_company(db_client, company_pair):
         "title": "Developer", "company_id": company["id"], "location": "Remote",
     })
     assert created.status_code == 201
-    assert db_client.delete(f"/jobs/{created.json()['id']}").status_code == 204
+    assert db_client.delete(f"/jobs/{created.json()['id']}", params={"version": 1}).status_code == 204
     assert db_client.get(f"/companies/{company['id']}").json() == company

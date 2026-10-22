@@ -19,6 +19,7 @@ The project was built from scratch; no Java migration is included.
 - Optional job descriptions with distinct omitted-field and explicit-null behavior.
 - Pydantic input validation and typed response models.
 - SQLAlchemy ORM, request-scoped sessions, and database-generated IDs.
+- Version-checked job/company updates and deletes, with 409 on stale edits.
 - Alembic schema migrations and separate runtime/migration credentials.
 - PostgreSQL integration tests with transaction isolation and independent-connection
   commit verification.
@@ -343,15 +344,24 @@ company returns `404` with `{"detail": "Company not found"}`. Description may
 be omitted or null. Responses include both `company_id` and the current company
 name as `company`.
 
-PUT requires title, company_id, and location; omitting description clears it.
-PATCH preserves omitted fields. `{"description": null}` clears description;
-explicit nulls for title/company_id/location and unknown keys are rejected.
-An empty PATCH body leaves an existing job unchanged.
+Job and company responses include `version`, starting at 1. PUT/PATCH require
+the version from the last read in their JSON body; DELETE requires
+`?version=<last-read-version>`. A stale version returns 409 without overwriting
+the newer row. Missing or invalid versions return 422. POST assigns version 1
+and rejects a client-supplied version.
+
+Job PUT also requires title, company_id, and location; omitting description
+clears it. PATCH preserves omitted business fields. For example,
+`{"version": 1, "description": null}` clears description when the current
+version is 1. Explicit nulls for title/company_id/location and unknown keys are
+rejected. Every successful PUT/PATCH advances the version once, including a
+version-only PATCH or identical field values. An empty `{}` PATCH returns 422.
+See [concurrent updates and the HTTP demo](docs/concurrency.md).
 
 This checkpoint intentionally changes job write requests: the old `company`
 text key is rejected with `422`, including when supplied alongside `company_id`.
 POST and PUT now also reject unknown fields. PATCH can move a job to another
-existing company by supplying only its `company_id`.
+existing company by supplying its `company_id` and current `version`.
 
 `GET /jobs` accepts `limit` (default 20, minimum 1, maximum 100) and `offset`
 (default 0, minimum 0). Example: `/jobs?limit=2&offset=1` skips the first row
@@ -391,10 +401,10 @@ company. `DELETE /companies/{company_id}` returns `409` with
 `{"detail": "Company has jobs and cannot be deleted"}` while any jobs remain
 linked. Otherwise it returns an empty `204` response. Missing companies return 404.
 
-Company PUT requires `name`; description defaults to null, clearing an omitted
-description. PATCH preserves omitted fields, accepts `{"description": null}`
-to clear description, and rejects explicit null for name. An empty PATCH is a
-no-op for an existing company. Both reject invalid names and unknown fields.
+Company PUT requires `name` and current `version`; description defaults to null,
+clearing an omitted description. PATCH requires current `version`, preserves
+omitted business fields, accepts `description: null` to clear description, and
+rejects explicit null for name. Both reject invalid names and unknown fields.
 Renaming to an existing exact name returns 409 without changing either field.
 Renaming a company keeps its ID and jobs' company IDs unchanged; job responses
 and name filters immediately use the new name on subsequent requests.
@@ -416,7 +426,8 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **260 tests passed** on 2026-10-21. The learner also
+Last verified local checkpoint: **305 tests passed** on 2026-10-22. This includes
+synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
 GitHub [CI runs](https://github.com/zsklav/workwise/actions/workflows/ci.yml) on
@@ -447,13 +458,14 @@ service-auth design. Docker exports OpenTelemetry traces to Jaeger at
 
 This is a learning checkpoint, not a production deployment. Signup/login and
 ownership checks are implemented. Refresh tokens, password reset, login rate
-limits, and version-based concurrency conflict detection remain future work.
+limits remain future work. Version-based conflict detection protects job and
+company PUT/PATCH/DELETE requests.
 Offset pagination is intended for this initial stage;
 large offsets and changes between page requests need later evaluation.
 
 Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
-failure recovery demos are implemented. Next: monitoring/retention, concurrency
-conflict detection and measured performance work. External email delivery and
+failure recovery demos are implemented. Next: monitoring/retention and measured
+performance work. External email delivery and
 live deployment remain deferred.
 
 ## Engineering notes
@@ -461,6 +473,7 @@ live deployment remain deferred.
 - [Project structure and entry points](docs/project-structure.md)
 - [Database behavior and API contracts](docs/database.md)
 - [Company APIs and database constraints](docs/companies.md)
+- [Concurrent-update protection and demo](docs/concurrency.md)
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Docker runtime and CI](docs/docker-ci.md)
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)

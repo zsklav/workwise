@@ -16,6 +16,7 @@ class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    version: int
     title: str
     company_id: int
     company: str
@@ -23,12 +24,17 @@ class JobRead(BaseModel):
     description: str | None = None
 
 
+class JobReplace(JobCreate):
+    version: int = Field(gt=0, strict=True, description="Version returned by the last job read.")
+
+
 class JobUpdate(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={"examples": [{"title": "Python Developer"}]},
+        json_schema_extra={"examples": [{"version": 1, "title": "Python Developer"}]},
     )
 
+    version: int = Field(gt=0, strict=True, description="Version returned by the last job read.")
     title: str | None = Field(
         default=None, min_length=1, description="May be omitted; explicit null is rejected."
     )
@@ -60,16 +66,22 @@ class CompanyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    version: int
     name: str
     description: str | None = None
+
+
+class CompanyReplace(CompanyCreate):
+    version: int = Field(gt=0, strict=True, description="Version returned by the last company read.")
 
 
 class CompanyUpdate(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={"examples": [{"name": "WorkWise Labs"}]},
+        json_schema_extra={"examples": [{"version": 1, "name": "WorkWise Labs"}]},
     )
 
+    version: int = Field(gt=0, strict=True, description="Version returned by the last company read.")
     name: str | None = Field(
         default=None, min_length=1, max_length=200, pattern=r"\S",
         description="May be omitted; explicit null is rejected.",

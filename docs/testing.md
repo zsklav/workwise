@@ -8,9 +8,19 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 260 cases covering inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 305 cases covering concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
+
+`tests/api/test_concurrency.py` checks stale PUT/PATCH/DELETE, strict version
+validation, retries, identical-value writes and version-only PATCH. Four real
+concurrent HTTP tests use independent sessions and a before-flush barrier:
+both requests load the same revision before either writes. Exactly one succeeds;
+the other returns 409, and independent SQL reads confirm the winner persists.
+Independent ORM sessions also verify stale DELETE rejection. The version
+migration test checks legacy data, defaults, constraints and downgrade in a
+rollback transaction. The Docker CI job runs `python -m scripts.smoke.concurrency`
+against the actual HTTP server. See [guarantees and demo](concurrency.md).
 
 ## PostgreSQL setup
 
@@ -85,7 +95,7 @@ and list output, PUT replacement and omission clearing, and invalid input.
 The independent-connection case also checks description persistence, including
 clearing it through PATCH. PATCH API cases cover title-only updates preserving
 other fields, description replacement/clearing, invalid values and unknown
-keys without data changes, missing jobs, and empty-body no-ops.
+keys without data changes, missing jobs, and version-only PATCH advancing the revision.
 
 Pagination cases verify the requested row window and ID order, valid limits 1
 and 100, offsets beyond the end, a default twenty-row page from 21 stored jobs,
@@ -105,7 +115,7 @@ jobs unchanged. A direct ORM insert also verifies the database unique constraint
 These cases use rollback fixtures; they do not simulate concurrent inserts.
 
 Company mutation tests cover PUT replacement and omission clearing, PATCH
-preservation and explicit-null clearing, empty PATCH, validation and unknown
+preservation and explicit-null clearing, version-only PATCH, validation and unknown
 fields, missing/invalid IDs, and duplicate renames with all changes rolled back.
 Both PUT and PATCH renames propagate to linked job responses and name filters
 without changing IDs. Delete cases verify empty 204 responses, repeated-delete

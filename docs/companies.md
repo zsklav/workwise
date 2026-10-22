@@ -28,9 +28,12 @@ Listing accepts `limit` from 1 to 100 and nonnegative `offset`, defaulting to
 zero. Offsets count rows; an offset beyond the end returns an empty array.
 The response is a JSON array without total-count metadata.
 
-PUT requires name; omitted description becomes null. PATCH preserves omitted
-fields and clears description only when explicitly supplied as null. An empty
-PATCH leaves an existing company unchanged. Name cannot be null in either
+PUT requires name and the last-read `version`; omitted description becomes null.
+PATCH also requires `version`, preserves omitted business fields and clears
+description only when explicitly supplied as null. Every successful PUT/PATCH
+increments the version, including version-only PATCH. An empty body returns 422.
+DELETE requires `?version=<last-read-version>`. Stale writes/deletes return 409.
+Name cannot be null in either
 method. Invalid names, descriptions, unknown keys, and ID write keys return 422.
 Valid requests targeting missing companies return 404.
 
@@ -51,7 +54,8 @@ names. The shared company commit helper catches that specific constraint violati
 the failed transaction, and returns 409 with
 `{"detail": "Company name already exists"}`. Other integrity failures are
 re-raised. This avoids relying on an application-level lookup before insertion.
-No concurrent-request test has been run.
+Synchronized concurrent PUT/PATCH tests now verify one winner and one stale
+conflict for the same row; they are separate from duplicate-name constraint tests.
 
 The same helper translates the named job-company foreign-key violation during
 deletion into 409 with `{"detail": "Company has jobs and cannot be deleted"}`
@@ -108,11 +112,13 @@ schema migration for the earlier company-mutation step; revision 0005 later
 adds users and ownership. Runtime UPDATE/DELETE permissions were granted separately.
 See [testing notes](testing.md).
 
-## Next step
+## Concurrent edits
 
-Authentication and ownership checks are implemented. Concurrent rename
-conflict detection beyond the unique constraint has not been added; updates
-do not yet use version fields or conditional requests.
+Revision 0008 adds a positive integer `version`, default 1, to companies and
+jobs. SQLAlchemy includes the loaded version in UPDATE/DELETE conditions, so
+two writers cannot silently overwrite the same revision. Failed writes roll
+back. Company rename does not increment linked jobs' row versions, although
+their public company-name field reflects the new name. See [concurrency](concurrency.md).
 
 ## References
 

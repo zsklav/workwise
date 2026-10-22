@@ -39,8 +39,10 @@ def owned_resources(anonymous_client, actors):
     ("patch", "/jobs/1", {}), ("delete", "/jobs/1", None),
 ])
 def test_all_writes_require_authentication(anonymous_client, method, path, payload):
+    if method in ("put", "patch"):
+        payload = {"version": 1, **payload}
     kwargs = {} if payload is None else {"json": payload}
-    response = anonymous_client.request(method, path, **kwargs)
+    response = anonymous_client.request(method, path, **kwargs, params={"version": 1} if method == "delete" else None)
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
 
@@ -65,8 +67,8 @@ def test_other_member_cannot_mutate_company_or_jobs(anonymous_client, actors, ow
     payload = {"name": "Stolen company"} if resource == "company" else {
         "title": "Stolen job", "company_id": company["id"], "location": "Elsewhere",
     }
-    kwargs = {} if method == "delete" else {"json": payload}
-    response = anonymous_client.request(method, path, headers=actors["other"], **kwargs)
+    kwargs = {} if method == "delete" else {"json": {"version": 1, **payload}}
+    response = anonymous_client.request(method, path, headers=actors["other"], **kwargs, params={"version": 1} if method == "delete" else None)
     assert response.status_code == 403
     assert anonymous_client.get("/companies").json() == [company]
     assert anonymous_client.get("/jobs").json() == [job]
@@ -89,7 +91,8 @@ def test_moving_jobs_checks_both_companies(anonymous_client, actors, owned_resou
     assert other.status_code == 201
     actor = actors["other"] if direction == "steal_source" else actors["owner"]
     response = anonymous_client.request(method, f"/jobs/{job['id']}", json={
-        "title": "Changed title", "company_id": other.json()["id"], "location": "Elsewhere",
+        "version": 1, "title": "Changed title",
+        "company_id": other.json()["id"], "location": "Elsewhere",
     }, headers=actor)
     assert response.status_code == 403
     assert anonymous_client.get(f"/jobs/{job['id']}").json() == job
@@ -99,9 +102,10 @@ def test_moving_jobs_checks_both_companies(anonymous_client, actors, owned_resou
 def test_owner_and_role_cannot_be_supplied_in_company_body(anonymous_client, actors, owned_resources, method):
     company, _ = owned_resources
     path = "/companies" if method == "post" else f"/companies/{company['id']}"
-    response = anonymous_client.request(method, path, json={
-        "name": "Company", "owner_id": 1, "role": "admin",
-    }, headers=actors["owner"])
+    payload = {"name": "Company", "owner_id": 1, "role": "admin"}
+    if method in ("put", "patch"):
+        payload["version"] = 1
+    response = anonymous_client.request(method, path, json=payload, headers=actors["owner"])
     assert response.status_code == 422
     assert anonymous_client.get(f"/companies/{company['id']}").json() == company
 
@@ -109,15 +113,13 @@ def test_owner_and_role_cannot_be_supplied_in_company_body(anonymous_client, act
 def test_admin_can_manage_other_members_company_and_jobs(anonymous_client, actors, owned_resources):
     company, job = owned_resources
     headers = actors["admin"]
-    assert anonymous_client.put(f"/companies/{company['id']}", json={"name": "Admin rename"}, headers=headers).status_code == 200
-    assert anonymous_client.patch(f"/companies/{company['id']}", json={"description": "Admin edit"}, headers=headers).status_code == 200
-    assert anonymous_client.put(f"/jobs/{job['id']}", json={
-        "title": "Admin edit", "company_id": company["id"], "location": "Remote",
-    }, headers=headers).status_code == 200
-    assert anonymous_client.patch(f"/jobs/{job['id']}", json={"title": "Admin patch"}, headers=headers).status_code == 200
-    assert anonymous_client.delete(f"/companies/{company['id']}", headers=headers).status_code == 409
-    assert anonymous_client.delete(f"/jobs/{job['id']}", headers=headers).status_code == 204
-    assert anonymous_client.delete(f"/companies/{company['id']}", headers=headers).status_code == 204
+    assert anonymous_client.put(f"/companies/{company['id']}", json={"version": 1, "name": "Admin rename"}, headers=headers).status_code == 200
+    assert anonymous_client.patch(f"/companies/{company['id']}", json={"version": 2, "description": "Admin edit"}, headers=headers).status_code == 200
+    assert anonymous_client.put(f"/jobs/{job['id']}", json={"version": 1, "title": "Admin edit", "company_id": company["id"], "location": "Remote",}, headers=headers).status_code == 200
+    assert anonymous_client.patch(f"/jobs/{job['id']}", json={"version": 2, "title": "Admin patch"}, headers=headers).status_code == 200
+    assert anonymous_client.delete(f"/companies/{company['id']}", headers=headers, params={"version": 3}).status_code == 409
+    assert anonymous_client.delete(f"/jobs/{job['id']}", headers=headers, params={"version": 3}).status_code == 204
+    assert anonymous_client.delete(f"/companies/{company['id']}", headers=headers, params={"version": 3}).status_code == 204
 
 
 def test_legacy_unowned_company_is_admin_only(anonymous_client, actors, db_session):
@@ -127,13 +129,13 @@ def test_legacy_unowned_company_is_admin_only(anonymous_client, actors, db_sessi
     path = f"/companies/{company.id}"
     payload = {"title": "Job", "company_id": company.id, "location": "Remote"}
     for actor in ("owner", "other"):
-        assert anonymous_client.patch(path, json={}, headers=actors[actor]).status_code == 403
+        assert anonymous_client.patch(path, json={"version": 1}, headers=actors[actor]).status_code == 403
         assert anonymous_client.post("/jobs", json=payload, headers=actors[actor]).status_code == 403
-        assert anonymous_client.delete(path, headers=actors[actor]).status_code == 403
+        assert anonymous_client.delete(path, headers=actors[actor], params={"version": 1}).status_code == 403
     created = anonymous_client.post("/jobs", json=payload, headers=actors["admin"])
     assert created.status_code == 201
-    assert anonymous_client.delete(f"/jobs/{created.json()['id']}", headers=actors["admin"]).status_code == 204
-    assert anonymous_client.delete(path, headers=actors["admin"]).status_code == 204
+    assert anonymous_client.delete(f"/jobs/{created.json()['id']}", headers=actors["admin"], params={"version": 1}).status_code == 204
+    assert anonymous_client.delete(path, headers=actors["admin"], params={"version": 1}).status_code == 204
 
 
 def test_role_claim_in_a_token_cannot_override_database_role(anonymous_client, actors, owned_resources):
@@ -144,7 +146,7 @@ def test_role_claim_in_a_token_cannot_override_database_role(anonymous_client, a
                         issuer=auth_settings.jwt_issuer)
     claims["role"] = "admin"
     token = jwt.encode(claims, key, algorithm="HS256")
-    response = anonymous_client.patch(f"/companies/{company['id']}", json={"name": "Unauthorized rename"},
+    response = anonymous_client.patch(f"/companies/{company['id']}", json={"version": 1, "name": "Unauthorized rename"},
                                       headers={"Authorization": "Bearer " + token})
     assert response.status_code == 403
     assert anonymous_client.get(f"/companies/{company['id']}").json() == company

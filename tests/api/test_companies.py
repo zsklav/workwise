@@ -19,7 +19,7 @@ def test_create_and_get_company(client: TestClient):
 
     assert created.status_code == 201
     company_id = created.json()["id"]
-    expected = {"id": company_id, **payload}
+    expected = {"id": company_id, "version": 1, **payload}
     assert isinstance(company_id, int)
     assert created.json() == expected
 
@@ -34,7 +34,7 @@ def test_company_description_is_optional(client: TestClient):
 
     assert response.status_code == 201
     assert response.json() == {
-        "id": response.json()["id"], "name": "WorkWise", "description": None,
+        "id": response.json()["id"], "version": 1, "name": "WorkWise", "description": None,
     }
 
 

@@ -11,6 +11,7 @@ Run the commands below from the repository root with the virtual environment act
 | `workwise/api/main.py` | Assemble the public FastAPI app, middleware, error handler and routers. |
 | `workwise/api/routes/` | Auth, companies, jobs, notification gateway and operational endpoints. |
 | `workwise/api/dependencies.py` | Shared request-scoped database session dependency. |
+| `workwise/api/concurrency.py` | Revision validation and atomic ORM conflict translation. |
 | `workwise/api/schemas.py` | Public request/response validation models. |
 | `workwise/core/` | Settings, repository paths, authentication helpers, logs/metrics and tracing. |
 | `workwise/db/` | Jobs database engine/session setup and ORM models. |
@@ -55,6 +56,7 @@ The root `main.py` remains a small compatibility entry point, so the earlier
 New documentation and Docker use the explicit package path.
 
 Smoke demos are now `python -m scripts.smoke.api`,
+`python -m scripts.smoke.concurrency`,
 `python -m scripts.smoke.distributed --allow-service-interruption` and
 `python -m scripts.smoke.notifications --allow-service-interruption`.
 They retain their existing disposable-stack behavior; see the Docker and

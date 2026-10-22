@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from workwise.api.dependencies import DbSession
-from workwise.api.schemas import JobCreate, JobRead, JobUpdate
+from workwise.api.concurrency import commit_versioned, require_version
+from workwise.api.schemas import JobCreate, JobRead, JobReplace, JobUpdate
 from workwise.core.security import CurrentUser, require_company_access
 from workwise.core.tracing import capture_context
 from workwise.db.models import Company, Job, OutboxEvent
@@ -31,7 +32,7 @@ def commit_job(job: Job, db: Session, *, recipient_id: int | None = None) -> Non
             event = job_created(job.id, job.company_id, recipient_id)
             db.add(OutboxEvent(id=event.event_id, payload=event.model_dump(mode="json"),
                                created_at=event.occurred_at, trace_context=capture_context()))
-        db.commit()
+        commit_versioned(db)
     except IntegrityError as error:
         db.rollback()
         if (
@@ -80,29 +81,33 @@ def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
-def delete_job(job_id: int, db: DbSession, user: CurrentUser) -> Response:
+def delete_job(job_id: int, db: DbSession, user: CurrentUser,
+               version: Annotated[int, Query(gt=0, description="Last observed job version")]) -> Response:
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
     require_company_access(job.employer, user)
+    require_version(job, version)
     db.delete(job)
-    db.commit()
+    commit_versioned(db)
     return Response(status_code=204)
 
 
 @router.put("/jobs/{job_id}", response_model=JobRead)
-def update_job(job_id: int, updated_job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
+def update_job(job_id: int, updated_job: JobReplace, db: DbSession, user: CurrentUser) -> Job:
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
     require_company_access(job.employer, user)
+    require_version(job, updated_job.version)
     require_company(updated_job.company_id, db, user)
     job.title = updated_job.title
     job.company_id = updated_job.company_id
     job.location = updated_job.location
     job.description = updated_job.description
+    job.version += 1
     commit_job(job, db)
     return job
 
@@ -114,12 +119,13 @@ def patch_job(job_id: int, updated_job: JobUpdate, db: DbSession, user: CurrentU
         raise HTTPException(status_code=404, detail="Job not found")
 
     require_company_access(job.employer, user)
-    changes = updated_job.model_dump(exclude_unset=True)
+    require_version(job, updated_job.version)
+    changes = updated_job.model_dump(exclude_unset=True, exclude={"version"})
     if "company_id" in changes:
         require_company(changes["company_id"], db, user)
-    if changes:
-        for field, value in changes.items():
-            setattr(job, field, value)
-        commit_job(job, db)
+    for field, value in changes.items():
+        setattr(job, field, value)
+    job.version += 1
+    commit_job(job, db)
 
     return job

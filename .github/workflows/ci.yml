@@ -81,6 +81,8 @@ jobs:
           docker compose --env-file .env.docker exec -T api python -c "import os; assert os.getuid() == 10001; assert 'MIGRATION_DB_PASSWORD' not in os.environ; assert 'POSTGRES_PASSWORD' not in os.environ"
       - name: Smoke test through HTTP
         run: python3 -m scripts.smoke.api
+      - name: Verify concurrent HTTP writes
+        run: python3 -m scripts.smoke.concurrency
       - name: Exercise broker and worker failure recovery
         run: python3 -m scripts.smoke.distributed --allow-service-interruption
       - name: Verify inbox workflow and exported distributed traces

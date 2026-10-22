@@ -51,23 +51,23 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
                 stored = connection.execute(
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
-                assert dict(stored) == {"id": job_id, **payload}
+                assert dict(stored) == {"id": job_id, "version": 1, **payload}
 
             updated_payload = {
                 **payload,
                 "location": "Bengaluru",
                 "description": "Updated persistent description",
             }
-            response = client.put(f"/jobs/{job_id}", json=updated_payload)
+            response = client.put(f"/jobs/{job_id}", json={"version": 1, **updated_payload})
             assert response.status_code == 200
 
             with test_engine.connect() as connection:
                 stored = connection.execute(
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
-                assert dict(stored) == {"id": job_id, **updated_payload}
+                assert dict(stored) == {"id": job_id, "version": 2, **updated_payload}
 
-            response = client.patch(f"/jobs/{job_id}", json={"description": None})
+            response = client.patch(f"/jobs/{job_id}", json={"version": 2, "description": None})
             assert response.status_code == 200
 
             with test_engine.connect() as connection:
@@ -75,10 +75,10 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
                 assert dict(stored) == {
-                    "id": job_id, **updated_payload, "description": None
+                    "id": job_id, "version": 3, **updated_payload, "description": None
                 }
 
-            response = client.delete(f"/jobs/{job_id}")
+            response = client.delete(f"/jobs/{job_id}", params={"version": 3})
             assert response.status_code == 204
             assert response.content == b""
 
@@ -132,25 +132,25 @@ def test_company_rename_and_delete_commits_visible_to_independent_connections(te
             job_id = job.json()["id"]
             path = f"/companies/{company_id}"
 
-            updated = client.put(path, json={"name": renamed, "description": "Committed update"})
+            updated = client.put(path, json={"version": 1, "name": renamed, "description": "Committed update"})
             assert updated.status_code == 200
             with test_engine.connect() as connection:
                 assert connection.scalar(select(Company.name).where(Company.id == company_id)) == renamed
             assert client.get(f"/jobs/{job.json()['id']}").json()["company"] == renamed
 
-            cleared = client.patch(path, json={"description": None})
+            cleared = client.patch(path, json={"version": 2, "description": None})
             assert cleared.status_code == 200
             with test_engine.connect() as connection:
                 stored = connection.execute(select(Company.__table__).where(Company.id == company_id)).mappings().one()
-                assert dict(stored) == {"id": company_id, "name": renamed, "description": None, "owner_id": signup.json()["id"]}
+                assert dict(stored) == {"id": company_id, "name": renamed, "description": None, "owner_id": signup.json()["id"], "version": 3}
 
-            assert client.delete(path).status_code == 409
+            assert client.delete(path, params={"version": 3}).status_code == 409
             with test_engine.connect() as connection:
                 assert connection.scalar(select(Job.company_id).where(Job.id == job.json()["id"])) == company_id
                 assert connection.scalar(select(Company.name).where(Company.id == company_id)) == renamed
 
-            assert client.delete(f"/jobs/{job.json()['id']}").status_code == 204
-            assert client.delete(path).status_code == 204
+            assert client.delete(f"/jobs/{job.json()['id']}", params={"version": 1}).status_code == 204
+            assert client.delete(path, params={"version": 3}).status_code == 204
             with test_engine.connect() as connection:
                 assert connection.scalar(select(Company.id).where(Company.id == company_id)) is None
     finally:

@@ -123,6 +123,9 @@ with read-only repository permission and a timeout on each job. It has two jobs:
   restricted deletion through HTTP. Cleanup removes only this runner's stack.
   It also runs broker/worker outage tests, recipient inbox isolation/read tests,
   verifies exported cross-service traces, and tests inbox/collector outages.
+  `python3 -m scripts.smoke.concurrency` races two HTTP writers for both jobs and
+  companies using PUT/PATCH, verifies 200/409 outcomes and the stored winner,
+  then deletes its job/company using their latest versions.
 
 `scripts/smoke/api.py` is for disposable CI stacks. It creates a random member
 account and cleans up its company/job through the API. The account itself

@@ -14,15 +14,15 @@ def test_put_replaces_company_and_can_clear_description(db_client, company):
     path = f"/companies/{company['id']}"
     payload = {"name": "WorkWise Labs", "description": "Updated description"}
 
-    response = db_client.put(path, json=payload)
+    response = db_client.put(path, json={"version": 1, **payload})
 
     assert response.status_code == 200
-    assert response.json() == {"id": company["id"], **payload}
+    assert response.json() == {"id": company["id"], "version": 2, **payload}
     assert db_client.get(path).json() == response.json()
 
-    cleared = db_client.put(path, json={"name": "WorkWise Labs"})
+    cleared = db_client.put(path, json={"version": 2, "name": "WorkWise Labs"})
     assert cleared.status_code == 200
-    expected = {"id": company["id"], "name": "WorkWise Labs", "description": None}
+    expected = {"id": company["id"], "version": 3, "name": "WorkWise Labs", "description": None}
     assert cleared.json() == expected
     assert db_client.get(path).json() == expected
     assert db_client.get("/companies").json() == [expected]
@@ -31,32 +31,32 @@ def test_put_replaces_company_and_can_clear_description(db_client, company):
 def test_delete_unlinked_company_returns_empty_204(db_client, company):
     path = f"/companies/{company['id']}"
 
-    response = db_client.delete(path)
+    response = db_client.delete(path, params={"version": 1})
 
     assert response.status_code == 204
     assert response.content == b""
     assert db_client.get(path).status_code == 404
     assert db_client.get("/companies").json() == []
-    assert db_client.delete(path).status_code == 404
+    assert db_client.delete(path, params={"version": 1}).status_code == 404
 
 
 def test_patch_preserves_omitted_fields_and_can_clear_description(db_client, company):
     path = f"/companies/{company['id']}"
-    renamed = db_client.patch(path, json={"name": "WorkWise Labs"})
-    expected = {**company, "name": "WorkWise Labs"}
+    renamed = db_client.patch(path, json={"version": 1, "name": "WorkWise Labs"})
+    expected = {**company, "version": 2, "name": "WorkWise Labs"}
     assert renamed.status_code == 200
     assert renamed.json() == expected
 
     for description in ("Updated description", None):
-        response = db_client.patch(path, json={"description": description})
-        expected = {**expected, "description": description}
+        response = db_client.patch(path, json={"version": expected["version"], "description": description})
+        expected = {**expected, "version": expected["version"] + 1, "description": description}
         assert response.status_code == 200
         assert response.json() == expected
         assert db_client.get(path).json() == expected
 
-    unchanged = db_client.patch(path, json={})
+    unchanged = db_client.patch(path, json={"version": expected["version"]})
     assert unchanged.status_code == 200
-    assert unchanged.json() == expected
+    assert unchanged.json() == {**expected, "version": expected["version"] + 1}
 
 
 @pytest.mark.parametrize("method", ["put", "patch"])
@@ -70,11 +70,11 @@ def test_rename_updates_linked_job_names_and_filters(db_client, company, method)
         jobs.append(created.json())
 
     renamed = db_client.request(method, f"/companies/{company['id']}", json={
-        "name": "Renamed Company", "description": company["description"],
+        "version": 1, "name": "Renamed Company", "description": company["description"],
     })
 
     assert renamed.status_code == 200
-    assert renamed.json() == {**company, "name": "Renamed Company"}
+    assert renamed.json() == {**company, "version": 2, "name": "Renamed Company"}
     expected = [{**job, "company": "Renamed Company"} for job in jobs]
     assert db_client.get("/jobs").json() == expected
     for job in expected:
@@ -94,7 +94,7 @@ def test_duplicate_rename_rolls_back_all_changes(db_client, company, method):
     assert job.status_code == 201
 
     response = db_client.request(method, f"/companies/{company['id']}", json={
-        "name": "Taken name", "description": "Must also roll back",
+        "version": 1, "name": "Taken name", "description": "Must also roll back",
     })
 
     assert response.status_code == 409
@@ -103,7 +103,7 @@ def test_duplicate_rename_rolls_back_all_changes(db_client, company, method):
     assert db_client.get(f"/companies/{other.json()['id']}").json() == other.json()
     assert db_client.get("/jobs").json() == [job.json()]
     # A failed transaction must not poison later writes.
-    assert db_client.patch(f"/companies/{company['id']}", json={"name": company["name"]}).status_code == 200
+    assert db_client.patch(f"/companies/{company['id']}", json={"version": 1, "name": company["name"]}).status_code == 200
 
 
 @pytest.mark.parametrize("method", ["put", "patch"])
@@ -115,7 +115,7 @@ def test_invalid_updates_leave_company_unchanged(db_client, company, method, cha
     path = f"/companies/{company['id']}"
     payload = {"name": company["name"], **changes}
 
-    response = db_client.request(method, path, json=payload)
+    response = db_client.request(method, path, json={"version": 1, **payload})
 
     assert response.status_code == 422
     assert db_client.get(path).json() == company
@@ -123,23 +123,23 @@ def test_invalid_updates_leave_company_unchanged(db_client, company, method, cha
 
 def test_put_requires_name(db_client, company):
     path = f"/companies/{company['id']}"
-    response = db_client.put(path, json={"description": "Only description"})
+    response = db_client.put(path, json={"version": 1, "description": "Only description"})
     assert response.status_code == 422
     assert db_client.get(path).json() == company
 
 
 @pytest.mark.parametrize("method", ["put", "patch", "delete"])
 def test_mutating_missing_company_returns_404(db_client, method):
-    kwargs = {} if method == "delete" else {"json": {"name": "Missing Company"}}
-    response = db_client.request(method, "/companies/2147483647", **kwargs)
+    kwargs = {} if method == "delete" else {"json": {"version": 1, "name": "Missing Company"}}
+    response = db_client.request(method, "/companies/2147483647", **kwargs, params={"version": 1} if method == "delete" else None)
     assert response.status_code == 404
     assert response.json() == {"detail": "Company not found"}
 
 
 @pytest.mark.parametrize("method", ["put", "patch", "delete"])
 def test_mutation_rejects_non_integer_company_id(db_client, method):
-    kwargs = {} if method == "delete" else {"json": {"name": "Valid name"}}
-    assert db_client.request(method, "/companies/abc", **kwargs).status_code == 422
+    kwargs = {} if method == "delete" else {"json": {"version": 1, "name": "Valid name"}}
+    assert db_client.request(method, "/companies/abc", **kwargs, params={"version": 1} if method == "delete" else None).status_code == 422
 
 
 def test_linked_company_delete_conflict_preserves_jobs_and_allows_retry(db_client, company):
@@ -152,16 +152,16 @@ def test_linked_company_delete_conflict_preserves_jobs_and_allows_retry(db_clien
         assert response.status_code == 201
         jobs.append(response.json())
 
-    blocked = db_client.delete(path)
+    blocked = db_client.delete(path, params={"version": 1})
     assert blocked.status_code == 409
     assert blocked.json() == {"detail": "Company has jobs and cannot be deleted"}
     assert db_client.get(path).json() == company
     assert db_client.get("/jobs").json() == jobs
-    assert db_client.patch(path, json={"description": company["description"]}).status_code == 200
+    assert db_client.patch(path, json={"version": 1, "description": company["description"]}).status_code == 200
 
-    assert db_client.delete(f"/jobs/{jobs[0]['id']}").status_code == 204
-    assert db_client.delete(path).status_code == 409
-    assert db_client.delete(f"/jobs/{jobs[1]['id']}").status_code == 204
-    assert db_client.delete(path).status_code == 204
+    assert db_client.delete(f"/jobs/{jobs[0]['id']}", params={"version": 1}).status_code == 204
+    assert db_client.delete(path, params={"version": 2}).status_code == 409
+    assert db_client.delete(f"/jobs/{jobs[1]['id']}", params={"version": 1}).status_code == 204
+    assert db_client.delete(path, params={"version": 2}).status_code == 204
     assert db_client.get(path).status_code == 404
     assert db_client.get("/jobs").json() == []

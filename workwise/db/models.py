@@ -25,6 +25,7 @@ class OutboxEvent(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (CheckConstraint("version > 0", name="ck_jobs_version_positive"),)
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -40,6 +41,8 @@ class Job(Base):
     employer: Mapped["Company"] = relationship(lazy="joined")
     location: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    __mapper_args__ = {"version_id_col": version}
 
     @property
     def company(self) -> str:
@@ -51,6 +54,7 @@ class Company(Base):
     __table_args__ = (
         UniqueConstraint("name", name="uq_companies_name"),
         CheckConstraint("length(btrim(name)) > 0", name="ck_companies_name_not_blank"),
+        CheckConstraint("version > 0", name="ck_companies_version_positive"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -62,6 +66,8 @@ class Company(Base):
         ForeignKey("users.id", name="fk_companies_owner_id_users", ondelete="RESTRICT"),
         nullable=True, index=True,
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    __mapper_args__ = {"version_id_col": version}
 
 
 class User(Base):

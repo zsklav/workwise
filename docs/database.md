@@ -2,10 +2,10 @@
 
 ## Request flow
 
-1. FastAPI validates create/PUT bodies with `JobCreate` and PATCH bodies with
+1. FastAPI validates create bodies with `JobCreate`, PUT with `JobReplace`, and PATCH with
    `JobUpdate` in `workwise/api/schemas.py`.
 2. `Depends(get_db)` supplies a session for the request.
-3. Endpoints in `workwise/api/main.py` query or modify `Job` objects mapped to `public.jobs`.
+3. Endpoints in `workwise/api/routes/jobs.py` query or modify `Job` objects mapped to `public.jobs`.
    Each job references `companies.id`; its company name is read through an ORM
    relationship, joined eagerly when loading jobs.
 4. Write endpoints commit their transaction; create/update refresh the object.
@@ -44,12 +44,14 @@ PATCH uses `model_dump(exclude_unset=True)` so omitted fields retain their
 stored values. Explicit `description: null` clears description. Explicit nulls
 for title/company_id/location, empty title/location, and invalid company IDs return 422.
 Unknown PATCH fields also return 422, preventing misspelled fields or ID updates
-from silently succeeding. An empty PATCH body is a successful no-op for an
-existing job. A valid PATCH body targeting an absent job returns 404.
+from silently succeeding. PUT/PATCH require a last-read positive integer
+`version`; an empty PATCH body returns 422. Version-only PATCH advances the
+revision without changing business fields. A valid PATCH body targeting an absent job returns 404.
 Invalid bodies and non-integer path IDs return 422. Missing jobs return
 `{"detail": "Job not found"}`. Repeated POSTs create distinct jobs. Authentication
-and ownership checks now protect writes, while reads stay public. Version-based
-concurrency conflict detection has not been added. See [access rules](auth.md).
+and ownership checks protect writes, while reads stay public. Responses include
+`version`; DELETE takes it as a required query parameter. Stale writes return
+409 and roll back. See [concurrency](concurrency.md) and [access rules](auth.md).
 
 ## Phase 2: pagination and company filtering
 

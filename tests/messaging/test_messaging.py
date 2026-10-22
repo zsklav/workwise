@@ -32,7 +32,7 @@ def test_job_and_event_committed_together_and_survive_job_delete(db_client, db_s
     assert stored.payload["event_type"] == "job.created.v2"
     assert stored.payload["recipient_id"] == auth_user.id
     assert stored.published_at is None
-    assert db_client.delete(f"/jobs/{job['id']}").status_code == 204
+    assert db_client.delete(f"/jobs/{job['id']}", params={"version": 1}).status_code == 204
     assert db_session.get(OutboxEvent, stored.id) is not None
 
 

@@ -38,7 +38,7 @@ def test_create_and_get_job(client: TestClient, company_ids: dict[str, int]):
 
     created_job = create_response.json()
     assert isinstance(created_job["id"], int)
-    assert created_job == {"id": created_job["id"], **payload, "description": None, "company": "Example"}
+    assert created_job == {"id": created_job["id"], "version": 1, **payload, "description": None, "company": "Example"}
 
     get_response = client.get(f"/jobs/{created_job['id']}")
 
@@ -68,7 +68,7 @@ def test_delete_job(client: TestClient, company_ids: dict[str, int]):
     assert create_response.status_code == 201
     job_id = create_response.json()["id"]
 
-    delete_response = client.delete(f"/jobs/{job_id}")
+    delete_response = client.delete(f"/jobs/{job_id}", params={"version": 1})
 
     assert delete_response.status_code == 204
     assert delete_response.content == b""
@@ -96,10 +96,10 @@ def test_update_job(client: TestClient, company_ids: dict[str, int]):
 
     update_response = client.put(
         f"/jobs/{job_id}",
-        json=updated_payload,
+        json={"version": 1, **updated_payload},
     )
 
-    expected_job = {"id": job_id, **updated_payload, "description": None, "company": "Example"}
+    expected_job = {"id": job_id, "version": 2, **updated_payload, "description": None, "company": "Example"}
 
     assert update_response.status_code == 200
     assert update_response.json() == expected_job
@@ -138,10 +138,10 @@ def test_mutating_missing_job_returns_404(client: TestClient, company_ids: dict[
     if method == "put":
         response = client.put(
             "/jobs/999",
-            json={"title": "Missing", "company_id": company_ids["Example"], "location": "Remote"},
+            json={"version": 1, "title": "Missing", "company_id": company_ids["Example"], "location": "Remote"},
         )
     else:
-        response = client.delete("/jobs/999")
+        response = client.delete("/jobs/999", params={"version": 1})
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
@@ -167,7 +167,7 @@ def test_create_job_with_optional_description(client: TestClient, company_ids: d
 
     assert response.status_code == 201
     job_id = response.json()["id"]
-    expected_job = {"id": job_id, **payload, "company": "Example"}
+    expected_job = {"id": job_id, "version": 1, **payload, "company": "Example"}
     assert response.json() == expected_job
     assert client.get(f"/jobs/{job_id}").json() == expected_job
     assert client.get("/jobs").json() == [expected_job]
@@ -185,15 +185,15 @@ def test_put_replaces_and_can_clear_description(client: TestClient, company_ids:
     job_id = created.json()["id"]
 
     updated_payload = {**payload, "description": "Updated description"}
-    updated = client.put(f"/jobs/{job_id}", json=updated_payload)
+    updated = client.put(f"/jobs/{job_id}", json={"version": 1, **updated_payload})
     assert updated.status_code == 200
-    assert updated.json() == {"id": job_id, **updated_payload, "company": "Example"}
+    assert updated.json() == {"id": job_id, "version": 2, **updated_payload, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == updated.json()
 
     replacement = {key: value for key, value in payload.items() if key != "description"}
-    cleared = client.put(f"/jobs/{job_id}", json=replacement)
+    cleared = client.put(f"/jobs/{job_id}", json={"version": 2, **replacement})
     assert cleared.status_code == 200
-    assert cleared.json() == {"id": job_id, **replacement, "description": None, "company": "Example"}
+    assert cleared.json() == {"id": job_id, "version": 3, **replacement, "description": None, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == cleared.json()
 
 
@@ -223,11 +223,11 @@ def test_patch_job_updates_only_title(client: TestClient, company_ids: dict[str,
 
     response = client.patch(
         f"/jobs/{job_id}",
-        json={"title": "Python Developer"},
+        json={"version": 1, "title": "Python Developer"},
     )
 
     expected = {
-        "id": job_id,
+        "id": job_id, "version": 2,
         **payload,
         "title": "Python Developer",
         "company": "WorkWise",
@@ -249,11 +249,11 @@ def test_patch_description_can_be_replaced_and_cleared(client: TestClient, compa
     assert created.status_code == 201
     job_id = created.json()["id"]
 
-    for description in ("Updated description", None):
+    for version, description in enumerate(("Updated description", None), start=1):
         response = client.patch(
-            f"/jobs/{job_id}", json={"description": description}
+            f"/jobs/{job_id}", json={"version": version, "description": description}
         )
-        expected = {"id": job_id, **payload, "description": description, "company": "WorkWise"}
+        expected = {"id": job_id, "version": version + 1, **payload, "description": description, "company": "WorkWise"}
         assert response.status_code == 200
         assert response.json() == expected
         assert client.get(f"/jobs/{job_id}").json() == expected
@@ -280,21 +280,21 @@ def test_patch_rejects_invalid_changes_without_modifying_job(
     assert created.status_code == 201
     job_id = created.json()["id"]
 
-    response = client.patch(f"/jobs/{job_id}", json=changes)
+    response = client.patch(f"/jobs/{job_id}", json={"version": 1, **changes})
 
     assert response.status_code == 422
     assert client.get(f"/jobs/{job_id}").json() == created.json()
 
 
 def test_patch_missing_job_returns_404(client: TestClient, company_ids: dict[str, int]):
-    response = client.patch("/jobs/999", json={"title": "Python Developer"})
+    response = client.patch("/jobs/999", json={"version": 1, "title": "Python Developer"})
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
     assert client.get("/jobs").json() == []
 
 
-def test_empty_patch_leaves_job_unchanged(client: TestClient, company_ids: dict[str, int]):
+def test_version_only_patch_advances_revision_without_changing_job_fields(client: TestClient, company_ids: dict[str, int]):
     created = client.post("/jobs", json={
         "title": "Python Intern",
         "company_id": company_ids["WorkWise"],
@@ -304,11 +304,11 @@ def test_empty_patch_leaves_job_unchanged(client: TestClient, company_ids: dict[
     assert created.status_code == 201
     job_id = created.json()["id"]
 
-    response = client.patch(f"/jobs/{job_id}", json={})
+    response = client.patch(f"/jobs/{job_id}", json={"version": 1})
 
     assert response.status_code == 200
-    assert response.json() == created.json()
-    assert client.get(f"/jobs/{job_id}").json() == created.json()
+    assert response.json() == {**created.json(), "version": 2}
+    assert client.get(f"/jobs/{job_id}").json() == {**created.json(), "version": 2}
 
 
 def test_get_jobs_supports_pagination(client: TestClient, company_ids: dict[str, int]):

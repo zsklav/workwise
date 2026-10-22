@@ -183,6 +183,27 @@ Downgrade removes ownership metadata and users, including their credential
 hashes, while preserving jobs and companies. It is destructive to account data
 and was tested only in rollback transactions in `workwise_test`.
 
+## Concurrent updates: revision 0008
+
+Revision 0008 adds a NOT NULL integer `version` with server default 1 to jobs
+and companies, and positive-version check constraints. Existing business fields,
+IDs, relationships and ownership are preserved. It uses a five-second lock
+timeout so contention aborts the transaction rather than waiting indefinitely.
+No inbox or outbox schema change is needed.
+
+On 2026-10-22 the native development database was upgraded from 0007 to 0008.
+Before/after snapshots verified that all fields of its three jobs and two
+companies were preserved, with only version 1 added. Users and outbox rows
+were also unchanged. Schema comparison found no pending operations.
+
+Upgrade with `python -m scripts.database.migrate` using migration credentials.
+Coordinate the API rollout: old clients must start sending their last-read
+version on PUT/PATCH and DELETE. Existing workers/publisher do not modify these
+rows, but stop the local stack for a controlled upgrade and restart it afterward.
+Downgrade removes revision metadata and protection; its round trip is tested
+only inside rollback transactions in the dedicated test database.
+See [the concurrency contract](concurrency.md).
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)

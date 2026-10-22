@@ -7,8 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from workwise.api.dependencies import DbSession
+from workwise.api.concurrency import commit_versioned, require_version
 from workwise.db.models import Company
-from workwise.api.schemas import CompanyCreate, CompanyRead, CompanyUpdate
+from workwise.api.schemas import CompanyCreate, CompanyRead, CompanyReplace, CompanyUpdate
 from workwise.core.security import CurrentUser, require_company_access
 
 
@@ -24,7 +25,7 @@ def find_company(company_id: int, db: Session) -> Company:
 
 def commit_company(db: Session) -> None:
     try:
-        db.commit()
+        commit_versioned(db)
     except IntegrityError as error:
         db.rollback()
         if (
@@ -69,11 +70,13 @@ def get_company(company_id: int, db: DbSession) -> Company:
 
 
 @router.put("/{company_id}", response_model=CompanyRead)
-def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSession, user: CurrentUser) -> Company:
+def replace_company(company_id: int, updated_company: CompanyReplace, db: DbSession, user: CurrentUser) -> Company:
     company = find_company(company_id, db)
     require_company_access(company, user)
+    require_version(company, updated_company.version)
     company.name = updated_company.name
     company.description = updated_company.description
+    company.version += 1
     commit_company(db)
     db.refresh(company)
     return company
@@ -83,19 +86,22 @@ def replace_company(company_id: int, updated_company: CompanyCreate, db: DbSessi
 def patch_company(company_id: int, updated_company: CompanyUpdate, db: DbSession, user: CurrentUser) -> Company:
     company = find_company(company_id, db)
     require_company_access(company, user)
-    changes = updated_company.model_dump(exclude_unset=True)
-    if changes:
-        for field, value in changes.items():
-            setattr(company, field, value)
-        commit_company(db)
-        db.refresh(company)
+    require_version(company, updated_company.version)
+    changes = updated_company.model_dump(exclude_unset=True, exclude={"version"})
+    for field, value in changes.items():
+        setattr(company, field, value)
+    company.version += 1
+    commit_company(db)
+    db.refresh(company)
     return company
 
 
 @router.delete("/{company_id}", status_code=204)
-def delete_company(company_id: int, db: DbSession, user: CurrentUser) -> Response:
+def delete_company(company_id: int, db: DbSession, user: CurrentUser,
+                   version: Annotated[int, Query(gt=0, description="Last observed company version")]) -> Response:
     company = find_company(company_id, db)
     require_company_access(company, user)
+    require_version(company, version)
     db.delete(company)
     commit_company(db)
     return Response(status_code=204)

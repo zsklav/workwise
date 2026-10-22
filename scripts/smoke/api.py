@@ -53,13 +53,16 @@ def main() -> None:
     job = request("POST", "/jobs", 201, payload)
     job_path = f"/jobs/{job['id']}"
     assert request("GET", job_path, 200)["company_id"] == company["id"]
-    request("PUT", job_path, 200, {**payload, "location": "Hybrid"})
-    request("PATCH", job_path, 200, {"description": "Real HTTP request"})
-    renamed = request("PATCH", company_path, 200, {"name": username + " renamed"})
+    job = request("PUT", job_path, 200, {**payload, "version": job["version"], "location": "Hybrid"})
+    request("PATCH", job_path, 409, {"version": 1, "title": "Stale edit must fail"})
+    assert request("GET", job_path, 200) == job
+    job = request("PATCH", job_path, 200, {"version": job["version"], "description": "Real HTTP request"})
+    renamed = request("PATCH", company_path, 200, {"version": company["version"], "name": username + " renamed"})
     assert request("GET", job_path, 200)["company"] == renamed["name"]
-    request("DELETE", company_path, 409)
-    request("DELETE", job_path, 204)
-    request("DELETE", company_path, 204)
+    request("DELETE", company_path + f"?version={renamed['version']}", 409)
+    request("DELETE", job_path + "?version=1", 409)
+    request("DELETE", job_path + f"?version={job['version']}", 204)
+    request("DELETE", company_path + f"?version={renamed['version']}", 204)
     print("Container HTTP smoke test passed: readiness, auth, ownership, CRUD, request IDs, and protected metrics.")
 
 
