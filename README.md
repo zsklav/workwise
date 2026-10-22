@@ -33,6 +33,7 @@ The project was built from scratch; no Java migration is included.
 - Admin-only Prometheus-format snapshots at `/metrics`.
 - Optional Prometheus/Grafana stack, service scrape credentials, dashboard and alert rules.
 - Bounded retention previews/cleanup preserving pending events, unread inbox items and receipts.
+- Repeatable HTTP/SQL performance reports and measured company/order index tuning.
 - Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
 - A RabbitMQ publisher, notification worker, and independent notification database/API.
 - Authenticated user inbox, unread filtering and idempotent read markers.
@@ -428,7 +429,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **324 tests passed** on 2026-10-22. This includes
+Last verified local checkpoint: **335 tests passed** on 2026-10-22. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
@@ -464,11 +465,12 @@ ownership checks are implemented. Refresh tokens, password reset, login rate
 limits remain future work. Version-based conflict detection protects job and
 company PUT/PATCH/DELETE requests.
 Offset pagination is intended for this initial stage;
-large offsets and changes between page requests need later evaluation.
+large offsets still scan preceding rows, as demonstrated in the query-plan experiment.
 
 Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
 failure recovery demos, monitoring and operator retention tools are implemented.
-Next: measured performance work and security hardening. External email delivery and
+The initial [performance baseline and query tuning](docs/performance.md) are complete.
+Next: security hardening and further profiling where measurements justify it. External email delivery and
 live deployment remain deferred.
 
 ## Engineering notes
@@ -483,5 +485,6 @@ live deployment remain deferred.
 - [User notification inbox and distributed tracing](docs/notifications-tracing.md)
 - [Request logs, IDs, and metrics](docs/observability.md)
 - [Monitoring dashboard, alert rules and safe retention](docs/monitoring-retention.md)
+- [HTTP load measurements, query plans and index tradeoffs](docs/performance.md)
 - [Migration history and baseline verification](docs/migrations.md)
 - [Testing setup, guarantees, and limitations](docs/testing.md)

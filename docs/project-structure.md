@@ -22,6 +22,7 @@ Run the commands below from the repository root with the virtual environment act
 | `scripts/database/` | Privileged jobs/notification migration runners and runtime grants. |
 | `scripts/docker/` | Generate or extend ignored Docker configuration without exposing secrets. |
 | `scripts/smoke/` | Executable API, failure-recovery and inbox/tracing demos for disposable stacks. |
+| `scripts/performance/` | Isolated fixture lifecycle, pooled HTTP workloads, report generation and temporary-table query-plan comparisons. |
 | `tests/` | `api`, `db`, `messaging`, `notifications`, `observability`, `cli` test groups; shared root fixtures. |
 | `migrations/` | Existing jobs Alembic revision history and environment. |
 | `docker/` | Database initialization scripts mounted by Compose. |

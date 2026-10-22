@@ -110,6 +110,12 @@ runner. Never mount the native PostgreSQL data directory into this stack.
 
 ## CI
 
+The PostgreSQL job also records temporary-table SQL plans. The container job
+runs a bounded HTTP benchmark before failure demos, checks all create events
+reach the fixture user's inbox, and cleans only its fixture. Sanitized JSON/
+Markdown reports are retained as CI artifacts for seven days. Fixed latency
+thresholds are deliberately not enforced on the shared runner. See [performance](performance.md).
+
 The container job enables the optional `monitoring` profile and verifies actual
 Prometheus scrapes, provisioned Grafana, alert-rule tests, a real consumer alert
 firing/resolving, and safe retention on synthetic rows. See [monitoring and

@@ -64,6 +64,14 @@ jobs:
           python -c "from workwise.db.session import engine; from sqlalchemy import text; connection = engine.connect(); connection.execute(text('SELECT version_num FROM public.alembic_version')); connection.close()"
       - name: Run PostgreSQL tests
         run: python -m pytest -q --tb=short
+      - name: Measure SQL plans on temporary fixtures
+        run: python -m scripts.performance.query_plan
+      - name: Save query plan evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: query-plan-measurement
+          path: performance-results/query-plan.json
+          retention-days: 7
 
   containers:
     runs-on: ubuntu-24.04
@@ -85,6 +93,23 @@ jobs:
         run: python3 -m scripts.smoke.api
       - name: Verify concurrent HTTP writes
         run: python3 -m scripts.smoke.concurrency
+      - name: Measure bounded HTTP workloads on disposable fixture
+        run: docker compose --env-file .env.docker run --rm --no-deps benchmark
+      - name: Collect HTTP measurement reports
+        if: always()
+        run: |
+          mkdir -p performance-results
+          docker compose --env-file .env.docker run --rm --no-deps benchmark cat /app/performance-results/http.json > performance-results/docker-http.json
+          docker compose --env-file .env.docker run --rm --no-deps benchmark cat /app/performance-results/http.md > performance-results/docker-http.md
+      - name: Save HTTP measurement evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-http-measurement
+          path: |
+            performance-results/docker-http.json
+            performance-results/docker-http.md
+          retention-days: 7
       - name: Validate monitoring configuration and alert rules
         run: |
           docker compose --env-file .env.docker exec -T prometheus promtool check config /etc/prometheus/prometheus.yml

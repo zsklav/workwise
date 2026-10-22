@@ -1,6 +1,29 @@
 name: workwise-docker
 
 services:
+  benchmark:
+    image: workwise-api:local
+    build: .
+    profiles: [tools]
+    command: ["python", "-m", "scripts.performance.run", "--mode", "docker", "--allow-disposable-stack", "--requests", "60"]
+    environment:
+      DB_HOST: db
+      DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?Generate .env.docker first}
+      PERF_REVISION: ${GITHUB_SHA:-local-working-tree}
+    volumes:
+      - performance_reports:/app/performance-results
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: "no"
+
   monitoring-secrets:
     image: workwise-api:local
     build: .
@@ -321,6 +344,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  performance_reports:
   monitoring_secrets:
   prometheus_data:
   grafana_data:

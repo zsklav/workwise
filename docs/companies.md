@@ -81,7 +81,10 @@ key violation to 404. Unexpected integrity errors still propagate.
 
 Job lists support an exact company-name filter and a positive `company_id`
 filter. Both supplied together must match. Filtering precedes pagination.
-The foreign key column has index `ix_jobs_company_id`; no speedup was measured.
+Revision 0009 replaces the original `ix_jobs_company_id` with composite
+`ix_jobs_company_id_id` for company filtering in ID order. A controlled
+temporary-table experiment measured lower first-page buffer work; deep offsets
+remain costly. See [performance evidence and tradeoffs](performance.md).
 
 Routes use `APIRouter` in `workwise/api/routes/companies.py`, registered in `workwise/api/main.py`.
 Each request receives a database session through the existing `get_db`

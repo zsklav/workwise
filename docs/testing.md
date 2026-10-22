@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 324 cases covering retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 335 cases covering performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -28,6 +28,13 @@ preview/apply behavior, cutoff boundaries, rollback, concurrent cleaner locks,
 and deduplication after inbox cleanup. Docker CI also uses Prometheus `promtool`
 rule tests and verifies actual scrape data, provisioned Grafana and a worker
 alert firing/resolving. See [monitoring/retention](monitoring-retention.md).
+
+Performance tests verify nearest-rank percentiles, failure/timeout accounting,
+bounded concurrency and total traffic, response correctness, safe fixture
+cleanup, temporary SQL tables and the index migration round trip. Actual native
+and Docker HTTP measurements are separate from these tests. CI publishes the
+reports and checks load correctness without fixed shared-runner latency gates.
+See [the performance protocol and measured limits](performance.md).
 
 ## PostgreSQL setup
 

@@ -25,7 +25,10 @@ class OutboxEvent(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
-    __table_args__ = (CheckConstraint("version > 0", name="ck_jobs_version_positive"),)
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_jobs_version_positive"),
+        Index("ix_jobs_company_id_id", "company_id", "id"),
+    )
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -36,7 +39,6 @@ class Job(Base):
     company_id: Mapped[int] = mapped_column(
         ForeignKey("companies.id", name="fk_jobs_company_id_companies", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
     )
     employer: Mapped["Company"] = relationship(lazy="joined")
     location: Mapped[str] = mapped_column(Text, nullable=False)

@@ -204,6 +204,21 @@ Downgrade removes revision metadata and protection; its round trip is tested
 only inside rollback transactions in the dedicated test database.
 See [the concurrency contract](concurrency.md).
 
+## Ordered company job lookup: revision 0009
+
+Revision 0009 replaces the single-column job company index with
+`ix_jobs_company_id_id(company_id, id)`. An isolated 50,000-row query-plan
+experiment showed lower buffer work for company-filtered first pages. The
+leftmost company column still supports lookup and FK checks. The wider index
+costs more storage/write maintenance; deep offsets remain expensive.
+
+On 2026-10-22 the native upgrade preserved all fields and versions of the three
+jobs and two companies, plus unchanged users/outbox rows. The migration is
+transactional with a five-second lock timeout. Its index build is appropriate
+for this small local dataset; large live tables need a planned concurrent
+index rollout. Tests verify upgrade/downgrade indexes and row preservation.
+See [measurement details](performance.md).
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
