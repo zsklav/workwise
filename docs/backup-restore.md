@@ -32,6 +32,8 @@ and table/column grants. An unexpected public table fails the backup until its
 coverage is reviewed. Locks wait at most five seconds; individual SQL statements
 have a two-minute timeout and dump/restore subprocesses have a three-minute limit.
 This deliberately bounded tool is intended for this project's measured scale.
+Column order is compared logically: physical slot gaps left by dropped columns
+are normalized, because a logical restore compacts those internal slots.
 
 ## Verify the backup by restoring it
 

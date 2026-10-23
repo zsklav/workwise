@@ -29,7 +29,8 @@ TARGET_PATTERN = re.compile(r"ww_restore_[0-9a-f]{32}_(jobs|notifications)\Z")
 # Catalog data deliberately excludes database names, OIDs and row values.
 SCHEMA_SQL = """SELECT jsonb_build_object(
  'columns', (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.table_name,c.ordinal_position) FROM
-   (SELECT table_name,column_name,ordinal_position,data_type,udt_name,is_nullable,column_default,is_identity,identity_generation
+   (SELECT table_name,column_name,row_number() OVER (PARTITION BY table_name ORDER BY ordinal_position) AS ordinal_position,
+           data_type,udt_name,is_nullable,column_default,is_identity,identity_generation
     FROM information_schema.columns WHERE table_schema='public') c),
  'constraints', (SELECT jsonb_agg(jsonb_build_array(r.relname,c.conname,pg_get_constraintdef(c.oid)) ORDER BY r.relname,c.conname)
     FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public'),
@@ -237,7 +238,12 @@ def drill(transport, directory):
             with Snapshot(transport, kind, target) as restored:
                 actual = restored.inventory()
             if actual != {key: item[key] for key in ("tables", "schema", "version")}:
-                raise RuntimeError(f"Restored {kind} data/schema/permissions differ from the captured snapshot.")
+                differences = []
+                for section in ("tables", "schema"):
+                    differences.extend(section + "." + key for key in actual[section] if actual[section][key] != item[section].get(key))
+                if actual["version"] != item["version"]:
+                    differences.append("version")
+                raise RuntimeError(f"Restored {kind} differs in: {', '.join(differences)}; row values suppressed.")
             verify_writes(transport, kind, target)
             results[kind] = {"verified": True, "schema_version": item["version"],
                              "rows": {t: v["rows"] for t, v in item["tables"].items()},
