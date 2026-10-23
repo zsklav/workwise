@@ -102,15 +102,16 @@ def main():
                  "database outage exhausts bounded retries and reaches DLQ", timeout=120)
         compose("start", "notification-db")
         wait_for(lambda: receipt_count(third_id) == "0", "notification database recovers without partial record")
-        compose("exec", "-T", "publisher", "python", "-m", "workwise.messaging.replay", "--event-id", third_id)
+        compose("run", "--rm", "--no-deps", "replay", "--event-id", third_id)
         wait_for(lambda: receipt_count(third_id) == "1", "operator replay records recovered event")
 
         send(b"invalid-json", str(uuid4()))
         wait_for(lambda: '"reason": "invalid_event"' in compose("logs", "--no-color", "notification-worker"),
                  "poison message quarantined")
-        publisher_code("from workwise.messaging.broker import *; c=connect(BrokerSettings()); ch=prepare(c); "
-                       "m,p,b=ch.basic_get(DLQ, auto_ack=False); assert m and b == b'invalid-json'; "
-                       "assert p.headers['failure_type'] == 'invalid_event'; c.close()")
+        compose("run", "--rm", "--no-deps", "--entrypoint", "python", "replay", "-c",
+                "from workwise.messaging.broker import *; c=connect(BrokerSettings()); ch=prepare(c); "
+                "m,p,b=ch.basic_get(DLQ, auto_ack=False); assert m and b == b'invalid-json'; "
+                "assert p.headers['failure_type'] == 'invalid_event'; c.close()")
         compose("exec", "-T", "notification-worker", "python", "-c",
                 "import os; assert all(k not in os.environ for k in ('DB_PASSWORD','JWT_SECRET','MIGRATION_DB_PASSWORD','NOTIFICATION_ADMIN_PASSWORD'))")
         compose("exec", "-T", "notification-worker", "python", "-c",

@@ -1,6 +1,47 @@
 name: workwise-docker
 
 services:
+  broker-setup:
+    image: workwise-api:local
+    build: .
+    command: ["python", "-m", "scripts.docker.configure_broker"]
+    environment:
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+      RABBITMQ_PUBLISHER_PASSWORD: ${RABBITMQ_PUBLISHER_PASSWORD:?Add missing .env.docker keys}
+      RABBITMQ_WORKER_PASSWORD: ${RABBITMQ_WORKER_PASSWORD:?Add missing .env.docker keys}
+      RABBITMQ_REPLAY_PASSWORD: ${RABBITMQ_REPLAY_PASSWORD:?Add missing .env.docker keys}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: "no"
+
+  replay:
+    image: workwise-api:local
+    build: .
+    profiles: [tools]
+    entrypoint: ["python", "-m", "workwise.messaging.replay"]
+    command: []
+    environment:
+      RABBITMQ_USER: workwise_replay
+      RABBITMQ_PASSWORD: ${RABBITMQ_REPLAY_PASSWORD:?Add missing .env.docker keys}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      broker-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: "no"
+
   benchmark:
     image: workwise-api:local
     build: .
@@ -171,7 +212,7 @@ services:
     restart: unless-stopped
 
   rabbitmq:
-    image: rabbitmq:4.2-management-alpine
+    image: rabbitmq:4.2.9-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: workwise
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
@@ -215,13 +256,14 @@ services:
       DB_NAME: workwise
       DB_USER: workwise_app
       DB_PASSWORD: ${DB_PASSWORD:?Generate .env.docker first}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+      RABBITMQ_USER: workwise_publisher
+      RABBITMQ_PASSWORD: ${RABBITMQ_PUBLISHER_PASSWORD:?Add missing .env.docker keys}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     depends_on:
       migrate:
         condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
+      broker-setup:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-m", "workwise.messaging.health"]
       interval: 10s
@@ -239,12 +281,13 @@ services:
     build: .
     command: ["python", "-m", "workwise.messaging.worker"]
     environment:
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Generate .env.docker first}
+      RABBITMQ_USER: workwise_worker
+      RABBITMQ_PASSWORD: ${RABBITMQ_WORKER_PASSWORD:?Add missing .env.docker keys}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Generate .env.docker first}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      broker-setup:
+        condition: service_completed_successfully
       notification-db:
         condition: service_healthy
       notification-migrate:

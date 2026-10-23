@@ -219,6 +219,23 @@ for this small local dataset; large live tables need a planned concurrent
 index rollout. Tests verify upgrade/downgrade indexes and row preservation.
 See [measurement details](performance.md).
 
+## Authentication sessions and limits: revision 0010
+
+Revision 0010 adds a positive default-1 user token epoch and two auth-state
+tables: hashed refresh credentials with expiry/used/revoked state, and HMAC-keyed
+fixed-window limits. Existing hashes, roles, activation and business rows are
+preserved. Runtime gets auth-state SELECT/INSERT/UPDATE and user UPDATE only on
+token_version. Account deletion cascades refresh credentials; there is no public
+account-delete endpoint. Downgrade removes auth state and invalidates the new
+session contract; it is tested only against disposable rollback fixtures.
+See [security contract and rollout](security-hardening.md).
+
+Native revision 0010 was applied on 2026-10-22 with before/after snapshots
+preserving the three jobs, two companies and all other existing business state.
+The actual runtime role then completed signup/login/refresh/logout inside an
+outer rollback transaction; no synthetic native account, token or limit rows
+remained. Role updates remained denied while token_version updates succeeded.
+
 ## Source
 
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)

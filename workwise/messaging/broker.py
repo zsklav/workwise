@@ -10,13 +10,14 @@ from workwise.core.tracing import capture_context, trace_id
 QUEUE = "workwise.notifications.v1"
 DLQ = "workwise.notifications.dead.v1"
 MAX_RETRIES = 3
+EXCHANGES = {QUEUE: "workwise.notifications.events.v1", DLQ: "workwise.notifications.dead.events.v1"}
 
 
 class BrokerSettings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", hide_input_in_errors=True)
     rabbitmq_host: str = "rabbitmq"
     rabbitmq_port: int = Field(default=5672, ge=1, le=65535)
-    rabbitmq_user: str = "workwise"
+    rabbitmq_user: str = "workwise_publisher"
     rabbitmq_password: SecretStr
 
 
@@ -31,10 +32,16 @@ def connect(settings: BrokerSettings):
     ))
 
 
-def prepare(connection):
-    channel = connection.channel()
+def declare_topology(channel):
+    # Only the operator bootstrap has configure permission.
     for queue in (QUEUE, DLQ):
         channel.queue_declare(queue=queue, durable=True, arguments={"x-queue-type": "classic"})
+        channel.exchange_declare(exchange=EXCHANGES[queue],exchange_type="direct",durable=True)
+        channel.queue_bind(queue=queue,exchange=EXCHANGES[queue],routing_key=queue)
+
+
+def prepare(connection):
+    channel = connection.channel()
     channel.basic_qos(prefetch_count=1)
     channel.confirm_delivery()
     return channel
@@ -45,7 +52,7 @@ def publish(channel, queue, body, *, message_id, retries=0, reason=None):
     if reason:
         headers["failure_type"] = reason
     channel.basic_publish(
-        exchange="", routing_key=queue, body=body,
+        exchange=EXCHANGES[queue], routing_key=queue, body=body,
         properties=pika.BasicProperties(content_type="application/json", delivery_mode=2,
                                         message_id=message_id, headers=headers),
         mandatory=True,

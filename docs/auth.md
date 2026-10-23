@@ -10,6 +10,8 @@ company's stored owner. Jobs inherit their company's permissions.
 |---|---|---|---|
 | POST | `/auth/signup` | JSON username/password | Member user, 201 |
 | POST | `/auth/login` | Password-grant form | Bearer token, 200 |
+| POST | `/auth/refresh` | JSON refresh token | Rotated access/refresh pair, 200 |
+| POST | `/auth/logout` | Current access bearer | Revoke all account sessions, empty 204 |
 | GET | `/auth/me` | Bearer token | Current user, 200 |
 
 Signup usernames are stripped and lowercased, then validated as 3–50 ASCII
@@ -40,8 +42,11 @@ Each protected request verifies the signature and claims, then loads the user
 from PostgreSQL. Missing or inactive users return 401 with a Bearer challenge.
 Role is read from the database, never a token claim. Database role changes and
 deactivation therefore apply on subsequent requests without issuing a new
-token. Active access tokens otherwise remain usable until expiry; there is no
-logout blacklist, refresh-token flow, or individual-token revocation yet.
+token. There is no individual-device revocation UI. Refresh rotation and account-wide logout now
+use persisted token hashes and user epochs. JWTs require an integer `ver`
+matching the current user epoch. Login/signup/refresh have shared PostgreSQL
+rate limits. See [security hardening](security-hardening.md) for exact contracts,
+replay containment, retry behavior and the required sign-in after upgrade.
 
 ## Permissions
 
@@ -79,12 +84,13 @@ This local operator command uses migration credentials and prompts with
 fail rather than promoting an existing account. Role changes/deactivation are
 trusted database-operator actions; there is no public role-management endpoint.
 
-Runtime grants are SELECT/INSERT on users and CRUD on companies/jobs. The
+Runtime grants are SELECT/INSERT on users, UPDATE only on their token_version
+column, SELECT/INSERT/UPDATE on auth state, and CRUD on companies/jobs. The
 readiness endpoint additionally has SELECT on Alembic's version table. The
-runtime role has no user UPDATE/DELETE or schema-management grant. API ownership
+runtime role has no role/password update, user DELETE or schema-management grant. API ownership
 checks are application authorization, not PostgreSQL row-level security;
 database credentials must remain private. Configure HTTPS when deploying bearer
-credentials. Rate limiting, account recovery, and deployment hardening are later
+credentials. Account recovery, MFA and deployment hardening are later
 work; this checkpoint is verified locally and is not a production security audit.
 
 ## Verification

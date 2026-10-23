@@ -110,6 +110,11 @@ runner. Never mount the native PostgreSQL data directory into this stack.
 
 ## CI
 
+The final security smoke test verifies actual HTTP refresh/logout/replay
+containment and throttling, AMQP configure/read/write denials for each service,
+and runtime column permissions. Operator bootstrap owns topology and uses
+separate credentials. See [security hardening](security-hardening.md).
+
 The PostgreSQL job also records temporary-table SQL plans. The container job
 runs a bounded HTTP benchmark before failure demos, checks all create events
 reach the fixture user's inbox, and cleans only its fixture. Sanitized JSON/

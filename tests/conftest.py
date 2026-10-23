@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from workwise.db.session import database_url, get_db
 from workwise.api.main import app
-from workwise.db.models import Base, Company, Job, User, OutboxEvent
+from workwise.db.models import AuthRateLimit, Base, Company, Job, User, OutboxEvent, RefreshToken
 from workwise.core.security import create_access_token, password_hasher
 
 from workwise.core.paths import ROOT_DIR
@@ -30,6 +30,8 @@ def test_engine() -> Iterator[Engine]:
         connect_args={"connect_timeout": 5},
     )
 
+    initialized = False
+    original_rate_keys = set()
     try:
         with engine.begin() as connection:
             if connection.scalar(text("SELECT current_database()")) != "workwise_test":
@@ -57,15 +59,21 @@ def test_engine() -> Iterator[Engine]:
             if compare_metadata(migration_context, Base.metadata):
                 raise RuntimeError("Test migrations do not match the ORM models.")
 
-            for model in (Job, Company, User, OutboxEvent):
+            for model in (Job, Company, User, OutboxEvent, RefreshToken):
                 if connection.scalar(select(func.count()).select_from(model)) != 0:
                     raise RuntimeError(
                         f"workwise_test.{model.__tablename__} must start empty. "
                         "Existing rows were not deleted."
                     )
+            original_rate_keys = set(connection.scalars(select(AuthRateLimit.bucket_hash)))
 
+        initialized = True
         yield engine
     finally:
+        if initialized:
+            # Keep pre-existing benchmark/security windows; remove only keys created by this run.
+            with engine.begin() as connection:
+                connection.execute(AuthRateLimit.__table__.delete().where(AuthRateLimit.bucket_hash.not_in(original_rate_keys)))
         engine.dispose()
 
 

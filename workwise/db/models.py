@@ -78,6 +78,7 @@ class User(Base):
         UniqueConstraint("username", name="uq_users_username"),
         CheckConstraint("username ~ '^[a-z0-9_]{3,50}$'", name="ck_users_username"),
         CheckConstraint("role IN ('member', 'admin')", name="ck_users_role"),
+        CheckConstraint("token_version > 0", name="ck_users_token_version_positive"),
     )
 
     id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
@@ -85,3 +86,23 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'member'"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+
+class RefreshToken(Base):
+    __tablename__ = "auth_refresh_tokens"
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", name="fk_refresh_user", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (CheckConstraint("attempts > 0", name="ck_auth_rate_attempts_positive"),)
+    bucket_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

@@ -30,6 +30,12 @@ class AuthSettings(Settings):
     jwt_issuer: str = "workwise"
     jwt_audience: str = "workwise-api"
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
+    refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
+    auth_rate_window_seconds: int = Field(default=60, ge=10, le=3600)
+    auth_login_ip_limit: int = Field(default=30, ge=1, le=1000)
+    auth_login_account_limit: int = Field(default=10, ge=1, le=100)
+    auth_signup_ip_limit: int = Field(default=20, ge=1, le=100)
+    auth_refresh_ip_limit: int = Field(default=60, ge=1, le=1000)
 
     @field_validator("jwt_secret")
     @classmethod

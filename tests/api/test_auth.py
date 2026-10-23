@@ -101,7 +101,7 @@ def test_me_requires_valid_bearer_token(anonymous_client, authorization):
 def test_invalid_token_claims_and_signatures_rejected(anonymous_client, auth_user, change):
     now = datetime.now(timezone.utc)
     claims = {"sub": str(auth_user.id), "iat": now, "nbf": now, "exp": now + timedelta(minutes=5),
-              "iss": auth_settings.jwt_issuer, "aud": auth_settings.jwt_audience, "type": "access"}
+              "iss": auth_settings.jwt_issuer, "aud": auth_settings.jwt_audience, "type": "access", "ver":auth_user.token_version}
     if change == "expired":
         claims["exp"] = now - timedelta(seconds=1)
     elif change == "future_iat":

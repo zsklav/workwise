@@ -120,9 +120,11 @@ jobs:
         run: python3 -m scripts.smoke.notifications --allow-service-interruption
       - name: Verify monitoring, alerts and retention through running services
         run: python3 -m scripts.smoke.monitoring --allow-service-interruption
+      - name: Verify session security, throttles and broker permission boundaries
+        run: python3 -m scripts.smoke.security
       - name: Show API and migration diagnostics on failure
         if: failure()
-        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq notification-db notification-migrate notification-api jaeger monitoring-secrets prometheus grafana
+        run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq broker-setup notification-db notification-migrate notification-api jaeger monitoring-secrets prometheus grafana
       - name: Stop disposable stack
         if: always()
         run: docker compose --env-file .env.docker down --volumes

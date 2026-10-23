@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 335 cases covering performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 361 cases covering session security, rate limits, performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -35,6 +35,14 @@ cleanup, temporary SQL tables and the index migration round trip. Actual native
 and Docker HTTP measurements are separate from these tests. CI publishes the
 reports and checks load correctness without fixed shared-runner latency gates.
 See [the performance protocol and measured limits](performance.md).
+
+Session tests cover refresh rotation, replay containment, account-wide logout,
+strict epochs, shared rate windows, redaction and true concurrent reservations/
+refreshes using independent committed sessions. Domain/refresh tables must start
+empty; existing rate-window keys are preserved, and only new keys created by the
+test run are cleaned up. User deletion cascades its refresh records. CI also
+verifies real AMQP denial boundaries and narrow runtime SQL grants.
+See [security details](security-hardening.md).
 
 ## PostgreSQL setup
 

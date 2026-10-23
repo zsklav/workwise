@@ -107,7 +107,7 @@ def main():
             for key in ("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT","NOTIFICATION_SERVICE_URL"):
                 environment.pop(key,None)
             log=(args.output/"native-server.log").open("w",encoding="utf-8")
-            process=subprocess.Popen([sys.executable,"-m","uvicorn","workwise.api.main:app","--host","127.0.0.1","--port",str(port),"--no-access-log"],
+            process=subprocess.Popen([sys.executable,"-m","uvicorn","workwise.api.main:app","--host","127.0.0.1","--port",str(port),"--no-access-log","--no-proxy-headers"],
                                      cwd=ROOT_DIR,env=environment,stdout=log,stderr=log,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         else:

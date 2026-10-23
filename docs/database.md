@@ -147,7 +147,7 @@ meanings. No new database migration was required for this endpoint.
 With the virtual environment active, start the application:
 
 ```powershell
-python -m uvicorn workwise.api.main:app --reload --no-access-log
+python -m uvicorn workwise.api.main:app --reload --no-access-log --no-proxy-headers
 ```
 
 1. Open `http://127.0.0.1:8000/docs` and create a job using `POST /jobs`.

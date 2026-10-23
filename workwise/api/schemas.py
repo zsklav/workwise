@@ -121,3 +121,18 @@ class TokenRead(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
+
+
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid",hide_input_in_errors=True)
+    refresh_token: SecretStr = Field(min_length=64,max_length=64)
+
+    @field_validator("refresh_token")
+    @classmethod
+    def valid_refresh_token(cls,value):
+        import re
+        if not re.fullmatch(r"[A-Za-z0-9_-]{64}",value.get_secret_value()):
+            raise ValueError("Invalid refresh token format")
+        return value

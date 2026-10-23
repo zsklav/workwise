@@ -30,7 +30,7 @@ includes raw URLs and is independent of WorkWise's sanitized request logger.
 The Docker command already disables that duplicate access logger.
 
 ```powershell
-python -m uvicorn workwise.api.main:app --reload --no-access-log
+python -m uvicorn workwise.api.main:app --reload --no-access-log --no-proxy-headers
 ```
 
 Expected HTTP errors retain their existing status and body. An unhandled

@@ -114,6 +114,8 @@ extend the deadline by an in-flight request. Queue processing overlaps HTTP
 writes; a short final drain does not imply every event had low latency.
 Inbox/receipt history remains in the disposable notification database after
 the benchmark's account/jobs are cleaned up. No external messages are sent.
+The later security checkpoint also retains hashed authentication rate windows
+until operator retention; deleting a fixture account cascades its refresh rows.
 
 CI runs this before failure-recovery demos, gates on zero request/validation
 failures plus outbox/inbox correctness, and uploads sanitized JSON/Markdown as

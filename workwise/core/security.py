@@ -21,13 +21,14 @@ dummy_password_hash = password_hasher.hash(secrets.token_urlsafe(32))
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, token_version: int = 1) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({
         "sub": str(user_id), "iat": now, "nbf": now,
         "exp": now + timedelta(minutes=auth_settings.access_token_expire_minutes),
         "iss": auth_settings.jwt_issuer, "aud": auth_settings.jwt_audience,
         "type": "access",
+        "ver": token_version,
     }, auth_settings.jwt_secret.get_secret_value(), algorithm="HS256")
 
 
@@ -43,13 +44,13 @@ def get_current_user(
         claims = jwt.decode(
             token, auth_settings.jwt_secret.get_secret_value(), algorithms=["HS256"],
             issuer=auth_settings.jwt_issuer, audience=auth_settings.jwt_audience,
-            options={"require": ["sub", "exp", "iat", "nbf", "iss", "aud", "type"]},
+            options={"require": ["sub", "exp", "iat", "nbf", "iss", "aud", "type", "ver"]},
         )
         if any(type(claims[field]) is not int for field in ("iat", "nbf", "exp")):
             raise unauthorized
         subject = claims["sub"]
         if (
-            claims["type"] != "access" or not isinstance(subject, str)
+            claims["type"] != "access" or type(claims["ver"]) is not int or claims["ver"] < 1 or not isinstance(subject, str)
             or not subject.isascii() or not subject.isdecimal()
             or len(subject) > 10 or not 1 <= int(subject) <= 2147483647
         ):
@@ -59,7 +60,7 @@ def get_current_user(
         raise unauthorized from None
 
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.token_version != claims["ver"]:
         raise unauthorized
     return user
 

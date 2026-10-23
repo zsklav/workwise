@@ -26,6 +26,7 @@ The project was built from scratch; no Java migration is included.
 - OpenAPI documentation at `/docs`.
 - Signup/login with Argon2 password hashing and expiring JWT bearer tokens.
 - Member/admin roles, company ownership, and authorization for every write.
+- Rotating refresh tokens, account-wide logout/replay containment and shared auth throttles.
 - Docker image and Compose stack with an isolated PostgreSQL volume and migration service.
 - GitHub Actions for PostgreSQL tests, image build, and HTTP container smoke tests.
 - Database/schema readiness at `/ready`, separate from process health at `/health`.
@@ -36,6 +37,7 @@ The project was built from scratch; no Java migration is included.
 - Repeatable HTTP/SQL performance reports and measured company/order index tuning.
 - Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
 - A RabbitMQ publisher, notification worker, and independent notification database/API.
+- Separate least-privilege broker identities for publishing, consuming and operator replay.
 - Authenticated user inbox, unread filtering and idempotent read markers.
 - OpenTelemetry traces across HTTP, durable outbox, publisher, worker and internal inbox API; Jaeger UI.
 - Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
@@ -256,7 +258,7 @@ or initialization command. See [migration notes](docs/migrations.md).
 ### Start the API
 
 ```powershell
-python -m uvicorn workwise.api.main:app --reload --no-access-log
+python -m uvicorn workwise.api.main:app --reload --no-access-log --no-proxy-headers
 ```
 
 - API docs: <http://127.0.0.1:8000/docs>
@@ -429,7 +431,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **335 tests passed** on 2026-10-22. This includes
+Last verified local checkpoint: **361 tests passed** on 2026-10-22. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
@@ -461,8 +463,8 @@ Docker exports OpenTelemetry traces to Jaeger at
 ## Current scope and next steps
 
 This is a learning checkpoint, not a production deployment. Signup/login and
-ownership checks are implemented. Refresh tokens, password reset, login rate
-limits remain future work. Version-based conflict detection protects job and
+ownership checks, refresh/logout and shared login limits are implemented.
+Password reset, MFA and deployment hardening remain future work. Version-based conflict detection protects job and
 company PUT/PATCH/DELETE requests.
 Offset pagination is intended for this initial stage;
 large offsets still scan preceding rows, as demonstrated in the query-plan experiment.
@@ -470,7 +472,8 @@ large offsets still scan preceding rows, as demonstrated in the query-plan exper
 Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
 failure recovery demos, monitoring and operator retention tools are implemented.
 The initial [performance baseline and query tuning](docs/performance.md) are complete.
-Next: security hardening and further profiling where measurements justify it. External email delivery and
+The initial [security hardening](docs/security-hardening.md) is also implemented.
+Further profiling remains driven by measurements. External email delivery and
 live deployment remain deferred.
 
 ## Engineering notes
@@ -480,6 +483,7 @@ live deployment remain deferred.
 - [Company APIs and database constraints](docs/companies.md)
 - [Concurrent-update protection and demo](docs/concurrency.md)
 - [Authentication, roles, and ownership](docs/auth.md)
+- [Session security, auth limits and broker permissions](docs/security-hardening.md)
 - [Docker runtime and CI](docs/docker-ci.md)
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
 - [User notification inbox and distributed tracing](docs/notifications-tracing.md)

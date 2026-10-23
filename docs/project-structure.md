@@ -14,6 +14,7 @@ Run the commands below from the repository root with the virtual environment act
 | `workwise/api/concurrency.py` | Revision validation and atomic ORM conflict translation. |
 | `workwise/api/schemas.py` | Public request/response validation models. |
 | `workwise/core/` | Settings, repository paths, authentication helpers, logs/metrics and tracing. |
+| `workwise/core/auth_sessions.py`, `auth_limits.py` | Refresh rotation/account revocation and PostgreSQL-backed authentication limits. |
 | `workwise/db/` | Jobs database engine/session setup and ORM models. |
 | `workwise/messaging/` | Event contracts, broker operations, outbox publisher, consumer, heartbeat and replay. |
 | `workwise/notifications/` | Independent inbox API, service-token contracts, notification storage and schema upgrade. |
@@ -38,11 +39,11 @@ Use absolute `workwise.*` imports to make these boundaries visible.
 
 | Purpose | Command |
 |---|---|
-| Public API | `python -m uvicorn workwise.api.main:app --reload --no-access-log` |
+| Public API | `python -m uvicorn workwise.api.main:app --reload --no-access-log --no-proxy-headers` |
 | Internal inbox API | `python -m uvicorn workwise.notifications.api:app --host 0.0.0.0 --no-access-log` |
 | Publisher | `python -m workwise.messaging.publisher` |
 | Worker | `python -m workwise.messaging.worker` |
-| DLQ replay | `python -m workwise.messaging.replay --event-id <UUID>` |
+| DLQ replay | `docker compose --env-file .env.docker run --rm --no-deps replay --event-id <UUID>` |
 | Create admin | `python -m workwise.cli.manage_users create-admin <username>` |
 | Read-only jobs check | `python -m workwise.cli.check_db` |
 | Jobs migrations/grants | `python -m scripts.database.migrate` |

@@ -47,8 +47,9 @@ receipts/inbox rows and read that version; it cannot create tables or update/del
 `notification-migrate` upgrades it to v2 and grants the separate inbox API role.
 Jobs Alembic never manages this database. API and publisher share the jobs runtime role for now;
 publisher has no JWT/migration credentials. Worker receives no jobs DB/JWT/admin
-credentials. Broker credentials are shared by the two trusted background services;
-per-service RabbitMQ permissions remain a later hardening step.
+credentials. Publisher, worker and replay now have separate broker identities
+and exact resource permissions; only operator bootstrap receives the broker
+admin credential. See [security hardening](security-hardening.md).
 
 The broker uses durable classic queues and a named volume. Persistent messages,
 [publisher confirms and consumer acknowledgements](https://www.rabbitmq.com/docs/confirms)
@@ -113,7 +114,7 @@ After fixing a failed dependency, replay one **valid** event selected from the
 DLQ. Replace the example UUID with its real event ID:
 
 ```powershell
-docker compose --env-file .env.docker exec publisher python -m workwise.messaging.replay --event-id 00000000-0000-0000-0000-000000000000
+docker compose --env-file .env.docker run --rm --no-deps replay --event-id 00000000-0000-0000-0000-000000000000
 ```
 
 Replay scans at most 100 ready DLQ messages (adjust `--limit` up to 1000), publishes
