@@ -69,7 +69,7 @@ exercise every CRUD permission or replace backup/monitoring procedures.
 Base images use maintained version tags (`python:3.13-slim-bookworm` and
 `postgres:17-alpine`), not immutable digests. Direct Python dependencies are
 pinned; transitive dependencies are not fully locked. This is a local learning
-stack, with cloud TLS/secrets/backups and deployment rollout still pending.
+stack, with cloud TLS/secrets/off-host backup storage and deployment rollout still pending.
 
 ## Commands
 
@@ -110,7 +110,7 @@ runner. Never mount the native PostgreSQL data directory into this stack.
 
 ## CI
 
-The final security smoke test verifies actual HTTP refresh/logout/replay
+The security smoke test verifies actual HTTP refresh/logout/replay
 containment and throttling, AMQP configure/read/write denials for each service,
 and runtime column permissions. Operator bootstrap owns topology and uses
 separate credentials. See [security hardening](security-hardening.md).
@@ -160,6 +160,12 @@ check correlation headers and deny metrics access to anonymous/member callers;
 the PostgreSQL suite separately verifies the admin response. The full local
 suite now passes 219 cases. See [observability](observability.md) for metrics
 lifetime and collection limitations.
+
+The backup checkpoint adds `scripts.smoke.backup --allow-service-interruption`
+after security verification. It pauses writers on the disposable stack, captures
+both databases, restores into new databases, verifies data/schema/grants and resumes
+services. CI uploads only row-count/timing verification summaries, never archives.
+See [backup and restore boundaries](backup-restore.md) before using these tools.
 
 ## References
 

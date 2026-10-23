@@ -9,3 +9,6 @@
 htmlcov
 *.log
 .vscode
+backups
+backup-reports
+**/*.dump

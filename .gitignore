@@ -11,3 +11,6 @@ htmlcov/
 .vscode/
 *.log
 performance-results/
+backups/
+backup-reports/
+*.dump

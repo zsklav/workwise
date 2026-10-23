@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 361 cases covering session security, rate limits, performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 375 cases covering backup safety, session security, rate limits, performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -43,6 +43,13 @@ empty; existing rate-window keys are preserved, and only new keys created by the
 test run are cleaned up. User deletion cascades its refresh records. CI also
 verifies real AMQP denial boundaries and narrow runtime SQL grants.
 See [security details](security-hardening.md).
+
+Backup safety tests reject corrupt/truncated archives, unsafe targets and archive
+paths, and verify cleanup never drops a pre-existing database. Docker CI pauses
+writers on its disposable stack, captures both databases with exported snapshots,
+restores isolated copies and compares rows, schema, owners and grants. It also
+checks runtime writes, identity sequences and source preservation. Only a summary
+report is uploaded; database archives remain private. See [backup/restore](backup-restore.md).
 
 ## PostgreSQL setup
 

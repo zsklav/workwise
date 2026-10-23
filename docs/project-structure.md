@@ -20,7 +20,7 @@ Run the commands below from the repository root with the virtual environment act
 | `workwise/notifications/` | Independent inbox API, service-token contracts, notification storage and schema upgrade. |
 | `workwise/cli/` | Local admin creation, read-only database check and historical baseline helper. |
 | `workwise/operations/` | Service scrape authentication/aggregates and bounded retention CLI. |
-| `scripts/database/` | Privileged jobs/notification migration runners and runtime grants. |
+| `scripts/database/` | Privileged jobs/notification migration runners, runtime grants, snapshot backups and isolated restore drills. |
 | `scripts/docker/` | Generate or extend ignored Docker configuration without exposing secrets. |
 | `scripts/smoke/` | Executable API, failure-recovery and inbox/tracing demos for disposable stacks. |
 | `scripts/performance/` | Isolated fixture lifecycle, pooled HTTP workloads, report generation and temporary-table query-plan comparisons. |
@@ -49,6 +49,8 @@ Use absolute `workwise.*` imports to make these boundaries visible.
 | Jobs migrations/grants | `python -m scripts.database.migrate` |
 | Inbox migrations/grants | `python -m scripts.database.migrate_notifications` |
 | Docker config | `python -m scripts.docker.create_env --add-missing` |
+| Docker database backup | `python -m scripts.database.backup backup` |
+| Restore verification copies | `python -m scripts.database.backup drill backups/<checkpoint>` |
 | Full test suite | `python -m pytest -q --tb=short` |
 
 The internal service and background commands require their configured databases

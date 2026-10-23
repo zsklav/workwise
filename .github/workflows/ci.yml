@@ -122,6 +122,16 @@ jobs:
         run: python3 -m scripts.smoke.monitoring --allow-service-interruption
       - name: Verify session security, throttles and broker permission boundaries
         run: python3 -m scripts.smoke.security
+      - name: Verify isolated backups and restore both databases
+        run: python3 -m scripts.smoke.backup --allow-service-interruption
+      - name: Save restore verification evidence without database archives
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: database-restore-verification
+          path: backup-reports/*.json
+          retention-days: 7
+          if-no-files-found: warn
       - name: Show API and migration diagnostics on failure
         if: failure()
         run: docker compose --env-file .env.docker logs --no-color --tail 150 api migrate publisher notification-worker rabbitmq broker-setup notification-db notification-migrate notification-api jaeger monitoring-secrets prometheus grafana

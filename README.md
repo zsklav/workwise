@@ -38,6 +38,7 @@ The project was built from scratch; no Java migration is included.
 - Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
 - A RabbitMQ publisher, notification worker, and independent notification database/API.
 - Separate least-privilege broker identities for publishing, consuming and operator replay.
+- Snapshot-consistent database backups and isolated restore drills comparing data, schema and permissions.
 - Authenticated user inbox, unread filtering and idempotent read markers.
 - OpenTelemetry traces across HTTP, durable outbox, publisher, worker and internal inbox API; Jaeger UI.
 - Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
@@ -431,7 +432,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **361 tests passed** on 2026-10-22. This includes
+Last verified local checkpoint: **375 tests passed** on 2026-10-23. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
@@ -473,6 +474,8 @@ Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
 failure recovery demos, monitoring and operator retention tools are implemented.
 The initial [performance baseline and query tuning](docs/performance.md) are complete.
 The initial [security hardening](docs/security-hardening.md) is also implemented.
+Database [backup and restore verification](docs/backup-restore.md) is available for both Docker databases,
+with a native jobs backup command. Off-host storage and live recovery cutover remain operator work.
 Further profiling remains driven by measurements. External email delivery and
 live deployment remain deferred.
 
@@ -484,6 +487,7 @@ live deployment remain deferred.
 - [Concurrent-update protection and demo](docs/concurrency.md)
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Session security, auth limits and broker permissions](docs/security-hardening.md)
+- [Database backups, isolated restore drills and recovery limits](docs/backup-restore.md)
 - [Docker runtime and CI](docs/docker-ci.md)
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
 - [User notification inbox and distributed tracing](docs/notifications-tracing.md)
