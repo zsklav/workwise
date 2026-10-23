@@ -1,6 +1,9 @@
+import json
+from unittest.mock import Mock
+
 from sqlalchemy import text
 
-from scripts.database.backup import SCHEMA_SQL
+from scripts.database.backup import SCHEMA_SQL, check_signature
 
 
 def test_backup_schema_comparison_preserves_column_order_without_dropped_column_slots(db_connection):
@@ -16,3 +19,14 @@ def test_backup_schema_comparison_preserves_column_order_without_dropped_column_
     assert before == after
     assert [column["column_name"] for column in after] == ["id", "title"]
     assert [column["ordinal_position"] for column in after] == [1, 2]
+
+
+def test_backup_check_comparison_normalizes_array_casts_and_detects_changed_rules(db_connection):
+    # This is the real users-role CHECK before/after PostgreSQL's dump/reparse.
+    snapshot = Mock()
+    snapshot.query.side_effect = lambda statement: [json.dumps(db_connection.scalar(text(statement))).encode()]
+    original = "role::text = ANY ((ARRAY['member'::varchar,'admin'::varchar])::text[])"
+    restored = "role::text = ANY (ARRAY[('member'::varchar)::text,('admin'::varchar)::text])"
+    changed = "role::text = ANY (ARRAY[('member'::varchar)::text,('superadmin'::varchar)::text])"
+    assert check_signature(snapshot, "users", original) == check_signature(snapshot, "users", restored)
+    assert check_signature(snapshot, "users", original) != check_signature(snapshot, "users", changed)

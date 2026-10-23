@@ -34,6 +34,9 @@ have a two-minute timeout and dump/restore subprocesses have a three-minute limi
 This deliberately bounded tool is intended for this project's measured scale.
 Column order is compared logically: physical slot gaps left by dropped columns
 are normalized, because a logical restore compacts those internal slots.
+CHECK expressions use PostgreSQL's planned output (`EXPLAIN`, never `ANALYZE`)
+to normalize equivalent cast representations introduced by dump/reparse. Constraint
+names, validation/inheritance flags and the resulting rules are compared too.
 
 ## Verify the backup by restoring it
 

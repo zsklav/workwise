@@ -32,7 +32,8 @@ SCHEMA_SQL = """SELECT jsonb_build_object(
    (SELECT table_name,column_name,row_number() OVER (PARTITION BY table_name ORDER BY ordinal_position) AS ordinal_position,
            data_type,udt_name,is_nullable,column_default,is_identity,identity_generation
     FROM information_schema.columns WHERE table_schema='public') c),
- 'constraints', (SELECT jsonb_agg(jsonb_build_array(r.relname,c.conname,pg_get_constraintdef(c.oid)) ORDER BY r.relname,c.conname)
+ 'constraints', (SELECT jsonb_agg(jsonb_build_array(r.relname,c.conname,
+       CASE WHEN c.contype='c' THEN NULL ELSE pg_get_constraintdef(c.oid) END) ORDER BY r.relname,c.conname)
     FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public'),
  'indexes', (SELECT jsonb_agg(jsonb_build_array(tablename,indexname,indexdef) ORDER BY tablename,indexname)
     FROM pg_indexes WHERE schemaname='public'),
@@ -43,6 +44,21 @@ SCHEMA_SQL = """SELECT jsonb_build_object(
  'column_grants', (SELECT jsonb_agg(to_jsonb(g) ORDER BY g.table_name,g.column_name,g.grantee,g.privilege_type) FROM
     (SELECT grantor,grantee,table_name,column_name,privilege_type,is_grantable FROM information_schema.column_privileges WHERE table_schema='public') g)
 )"""
+
+CHECKS_SQL = """SELECT COALESCE(jsonb_agg(to_jsonb(c) ORDER BY c.table_name,c.name),'[]'::jsonb) FROM
+ (SELECT r.relname AS table_name,c.conname AS name,pg_get_expr(c.conbin,c.conrelid) AS expression,
+         c.convalidated AS validated,c.connoinherit AS no_inherit
+  FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+  WHERE n.nspname='public' AND c.contype='c') c"""
+
+
+def check_signature(snapshot, table, expression):
+    # pg_dump/reparse can distribute array casts differently. The planner folds
+    # both forms to the same expression. EXPLAIN without ANALYZE reads no rows.
+    table = '"' + table.replace('"', '""') + '"'
+    statement = f'EXPLAIN (FORMAT JSON, VERBOSE true, COSTS false) SELECT ({expression}) FROM public.{table} AS backup_row LIMIT 0'
+    plan = json.loads(b"".join(snapshot.query(statement)))
+    return plan[0]["Plan"]["Output"]
 
 
 def private_file(path):
@@ -152,7 +168,12 @@ class Snapshot:
                 count += 1
             data[table] = {"rows": count, "sha256": digest.hexdigest()}
         version_query = "SELECT version_num FROM alembic_version" if self.kind == "jobs" else "SELECT version FROM notification_schema_version"
-        return {"tables": data, "schema": json.loads(self.query(SCHEMA_SQL)[0]),
+        schema = json.loads(self.query(SCHEMA_SQL)[0])
+        checks = json.loads(self.query(CHECKS_SQL)[0])
+        for check in checks:
+            check["expression"] = check_signature(self, check["table_name"], check["expression"])
+        schema["checks"] = checks
+        return {"tables": data, "schema": schema,
                 "version": self.query(version_query)[0].decode().strip()}
 
     def __exit__(self, *unused):

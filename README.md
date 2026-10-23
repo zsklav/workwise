@@ -432,7 +432,7 @@ Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **376 tests passed** on 2026-10-23. This includes
+Last verified local checkpoint: **377 tests passed** on 2026-10-23. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
