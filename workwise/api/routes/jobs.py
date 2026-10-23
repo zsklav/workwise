@@ -5,14 +5,15 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from workwise.api.dependencies import DbSession
 from workwise.api.concurrency import commit_versioned, require_version
+from workwise.api.idempotency import IdempotencyKey, reserve, response as keyed_response
 from workwise.api.schemas import JobCreate, JobRead, JobReplace, JobUpdate
 from workwise.core.security import CurrentUser, require_company_access
 from workwise.core.tracing import capture_context
-from workwise.db.models import Company, Job, OutboxEvent
+from workwise.db.models import Company, Job, JobApplication, OutboxEvent
 from workwise.messaging.events import job_created
 
 router = APIRouter()
@@ -25,13 +26,17 @@ def require_company(company_id: int, db: Session, user) -> None:
     require_company_access(company, user)
 
 
-def commit_job(job: Job, db: Session, *, recipient_id: int | None = None) -> None:
+def commit_job(job: Job, db: Session, *, recipient_id: int | None = None, reservation=None) -> dict | None:
+    snapshot = None
     try:
         if recipient_id is not None:
             db.flush()
             event = job_created(job.id, job.company_id, recipient_id)
             db.add(OutboxEvent(id=event.event_id, payload=event.model_dump(mode="json"),
                                created_at=event.occurred_at, trace_context=capture_context()))
+        if reservation is not None:
+            snapshot = JobRead.model_validate(job).model_dump(mode="json")
+            reservation.response_body = snapshot
         commit_versioned(db)
     except IntegrityError as error:
         db.rollback()
@@ -40,8 +45,19 @@ def commit_job(job: Job, db: Session, *, recipient_id: int | None = None) -> Non
             and error.orig.diag.constraint_name == "fk_jobs_company_id_companies"
         ):
             raise HTTPException(status_code=404, detail="Company not found") from error
+        if isinstance(error.orig, ForeignKeyViolation) and error.orig.diag.constraint_name == "fk_application_job":
+            raise HTTPException(409, "Job has applications and cannot be deleted") from error
         raise
     db.refresh(job)
+    return snapshot
+
+
+def protect_company_assignment(job, destination, version, db):
+    if job.company_id != destination:
+        db.scalar(select(Job).where(Job.id == job.id).options(lazyload(Job.employer)).with_for_update(of=Job).execution_options(populate_existing=True))
+        require_version(job, version)
+        if db.scalar(select(JobApplication.id).where(JobApplication.job_id == job.id).limit(1)) is not None:
+            raise HTTPException(409, "A job with applications cannot change company")
 
 
 @router.get("/jobs", response_model=list[JobRead])
@@ -72,12 +88,15 @@ def get_job(job_id: int, db: DbSession) -> Job:
 
 
 @router.post("/jobs", status_code=201, response_model=JobRead)
-def create_job(job: JobCreate, db: DbSession, user: CurrentUser) -> Job:
+def create_job(job: JobCreate, db: DbSession, user: CurrentUser, idempotency_key: IdempotencyKey = None):
+    record, replay = reserve(db, user.id, "jobs.create", idempotency_key, job.model_dump(mode="json"))
+    if replay is not None:
+        return replay
     require_company(job.company_id, db, user)
     new_job = Job(**job.model_dump())
     db.add(new_job)
-    commit_job(new_job, db, recipient_id=user.id)
-    return new_job
+    snapshot = commit_job(new_job, db, recipient_id=user.id, reservation=record)
+    return keyed_response(snapshot, replayed=False) if record is not None else new_job
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
@@ -90,7 +109,13 @@ def delete_job(job_id: int, db: DbSession, user: CurrentUser,
     require_company_access(job.employer, user)
     require_version(job, version)
     db.delete(job)
-    commit_versioned(db)
+    try:
+        commit_versioned(db)
+    except IntegrityError as error:
+        db.rollback()
+        if isinstance(error.orig, ForeignKeyViolation) and error.orig.diag.constraint_name == "fk_application_job":
+            raise HTTPException(409, "Job has applications and cannot be deleted") from error
+        raise
     return Response(status_code=204)
 
 
@@ -102,6 +127,7 @@ def update_job(job_id: int, updated_job: JobReplace, db: DbSession, user: Curren
 
     require_company_access(job.employer, user)
     require_version(job, updated_job.version)
+    protect_company_assignment(job, updated_job.company_id, updated_job.version, db)
     require_company(updated_job.company_id, db, user)
     job.title = updated_job.title
     job.company_id = updated_job.company_id
@@ -122,6 +148,7 @@ def patch_job(job_id: int, updated_job: JobUpdate, db: DbSession, user: CurrentU
     require_version(job, updated_job.version)
     changes = updated_job.model_dump(exclude_unset=True, exclude={"version"})
     if "company_id" in changes:
+        protect_company_assignment(job, changes["company_id"], updated_job.version, db)
         require_company(changes["company_id"], db, user)
     for field, value in changes.items():
         setattr(job, field, value)

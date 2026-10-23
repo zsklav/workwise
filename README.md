@@ -6,6 +6,7 @@ engineering, database design, testing, and distributed systems.
 The Phase 1 checkpoint established a working single FastAPI application with
 PostgreSQL persistence. Later checkpoints add bounded job-list pagination,
 exact company filtering, and Company CRUD APIs linked to jobs by foreign key.
+Job applications add a private, versioned applicant/employer workflow.
 The project was built from scratch; no Java migration is included.
 
 ## Implemented
@@ -20,6 +21,8 @@ The project was built from scratch; no Java migration is included.
 - Pydantic input validation and typed response models.
 - SQLAlchemy ORM, request-scoped sessions, and database-generated IDs.
 - Version-checked job/company updates and deletes, with 409 on stale edits.
+- Optional idempotency keys for job/application creation, with atomic 24-hour response replay.
+- Private job applications, owner/admin review, valid state transitions and version conflicts.
 - Alembic schema migrations and separate runtime/migration credentials.
 - PostgreSQL integration tests with transaction isolation and independent-connection
   commit verification.
@@ -43,6 +46,7 @@ The project was built from scratch; no Java migration is included.
 - OpenTelemetry traces across HTTP, durable outbox, publisher, worker and internal inbox API; Jaeger UI.
 - Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
 - Docker failure demos exercised in CI: broker outage, offline worker, database outage and recovery.
+- Optional HAProxy gateway, two API/publisher/worker instances, and process-failure demos with safe retries.
 
 Companies have their own table. Jobs store `company_id`; API responses also
 include the company's name as read-only `company` text. Create a company first,
@@ -425,14 +429,15 @@ python -m pytest -v
 Tests explicitly use `workwise_test`, applying Alembic migrations through a
 shared test connection before running. The runtime role owns this separate test
 database, enabling test setup without widening its development permissions.
-The users, companies, jobs, and outbox tables must start empty; existing rows are not silently deleted.
+Business, refresh-token and idempotency tables must start empty; existing rows are not silently deleted.
+Pre-existing authentication rate-window keys are preserved.
 
 Most cases roll back their changes, including ORM commits through savepoints.
 Separate persistence cases use real commits, check independent connections,
 and remove only their uniquely marked test rows. Tests are designed for sequential
 execution, not parallel workers.
 
-Last verified local checkpoint: **377 tests passed** on 2026-10-23. This includes
+Last verified local checkpoint: **409 tests passed** on 2026-10-23. This includes
 synchronized concurrent writers using independent PostgreSQL sessions. The learner also
 verified that a created job remains available after restarting Uvicorn.
 
@@ -476,6 +481,8 @@ The initial [performance baseline and query tuning](docs/performance.md) are com
 The initial [security hardening](docs/security-hardening.md) is also implemented.
 Database [backup and restore verification](docs/backup-restore.md) is available for both Docker databases,
 with a native jobs backup command. Off-host storage and live recovery cutover remain operator work.
+Idempotent creation, job applications and the optional [multiple-instance demo](docs/multiple-instances.md)
+are implemented. Use the [study guide](docs/study-guide.md) to trace the design before live deployment.
 Further profiling remains driven by measurements. External email delivery and
 live deployment remain deferred.
 
@@ -488,6 +495,9 @@ live deployment remain deferred.
 - [Authentication, roles, and ownership](docs/auth.md)
 - [Session security, auth limits and broker permissions](docs/security-hardening.md)
 - [Database backups, isolated restore drills and recovery limits](docs/backup-restore.md)
+- [Idempotency keys and application workflow](docs/idempotency-applications.md)
+- [Multiple-instance routing and failure demo](docs/multiple-instances.md)
+- [Project study and interview walkthrough](docs/study-guide.md)
 - [Docker runtime and CI](docs/docker-ci.md)
 - [Distributed events, guarantees and failure demos](docs/distributed-systems.md)
 - [User notification inbox and distributed tracing](docs/notifications-tracing.md)

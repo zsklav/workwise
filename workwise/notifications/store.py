@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 from psycopg.types.json import Jsonb
-from workwise.messaging.events import JobCreatedV2
+from workwise.messaging.events import ApplicationChanged, JobCreatedV2
 
 
 class NotificationSettings(BaseSettings):
@@ -38,11 +38,13 @@ def record_notification(engine, event):
                                          {"id": event.event_id})
             if existing != payload:
                 raise EventConflict("Event ID reused with different data")
-        elif isinstance(event, JobCreatedV2):
+        elif isinstance(event, (JobCreatedV2, ApplicationChanged)):
+            message = (f"Application #{event.application_id} for job #{event.job_id}: {event.status}."
+                       if isinstance(event, ApplicationChanged) else f"Your job #{event.job_id} was created successfully.")
             connection.execute(text(
                 "INSERT INTO notifications (event_id, recipient_id, job_id, company_id, message, occurred_at) "
                 "VALUES (:id, :recipient, :job, :company, :message, :occurred)"
             ), {"id": event.event_id, "recipient": event.recipient_id, "job": event.job_id,
-                "company": event.company_id, "message": f"Your job #{event.job_id} was created successfully.",
+                "company": event.company_id, "message": message,
                 "occurred": event.occurred_at})
     return inserted is not None

@@ -106,3 +106,37 @@ class AuthRateLimit(Base):
     bucket_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+    __table_args__ = (UniqueConstraint("user_id", "scope", "key_hash", name="uq_idempotency_actor_scope_key"),)
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", name="fk_idempotency_user", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(100), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_body: Mapped[dict | None] = mapped_column(JSONB)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class JobApplication(Base):
+    __tablename__ = "job_applications"
+    __table_args__ = (
+        UniqueConstraint("job_id", "applicant_id", name="uq_application_job_applicant"),
+        CheckConstraint("status IN ('applied', 'shortlisted', 'rejected', 'hired')", name="ck_application_status"),
+        CheckConstraint("version > 0", name="ck_application_version_positive"),
+        CheckConstraint("cover_letter IS NULL OR length(cover_letter) <= 4000", name="ck_application_cover_length"),
+        Index("ix_applications_applicant_id_id", "applicant_id", "id"),
+        Index("ix_applications_job_id_id", "job_id", "id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", name="fk_application_job", ondelete="RESTRICT"))
+    applicant_id: Mapped[int] = mapped_column(ForeignKey("users.id", name="fk_application_user", ondelete="RESTRICT"))
+    cover_letter: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'applied'"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    job: Mapped[Job] = relationship(lazy="joined")
+    __mapper_args__ = {"version_id_col": version}

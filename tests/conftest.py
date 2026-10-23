@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from workwise.db.session import database_url, get_db
 from workwise.api.main import app
-from workwise.db.models import AuthRateLimit, Base, Company, Job, User, OutboxEvent, RefreshToken
+from workwise.db.models import AuthRateLimit, Base, Company, Job, User, OutboxEvent, RefreshToken, IdempotencyRecord, JobApplication
 from workwise.core.security import create_access_token, password_hasher
 
 from workwise.core.paths import ROOT_DIR
@@ -59,7 +59,7 @@ def test_engine() -> Iterator[Engine]:
             if compare_metadata(migration_context, Base.metadata):
                 raise RuntimeError("Test migrations do not match the ORM models.")
 
-            for model in (Job, Company, User, OutboxEvent, RefreshToken):
+            for model in (Job, Company, User, OutboxEvent, RefreshToken, IdempotencyRecord, JobApplication):
                 if connection.scalar(select(func.count()).select_from(model)) != 0:
                     raise RuntimeError(
                         f"workwise_test.{model.__tablename__} must start empty. "

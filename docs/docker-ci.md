@@ -167,6 +167,12 @@ both databases, restores into new databases, verifies data/schema/grants and res
 services. CI uploads only row-count/timing verification summaries, never archives.
 See [backup and restore boundaries](backup-restore.md) before using these tools.
 
+The `scale` profile adds HAProxy and second API/publisher/worker instances. CI's
+`scripts.smoke.scale` proves same-key creation across both API nodes and completes
+an applicant/employer/inbox workflow with the primary API/publisher/worker stopped.
+Extra writers stop before backup verification; final cleanup includes both profiles.
+See [multiple-instance guarantees and limits](multiple-instances.md).
+
 ## References
 
 - [Docker Python guide](https://docs.docker.com/guides/python/)

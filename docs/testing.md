@@ -8,7 +8,7 @@ From the project root with the virtual environment active:
 python -m pytest -v
 ```
 
-The current suite has 377 cases covering backup safety, session security, rate limits, performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
+The current suite has 409 cases covering idempotent creation, applications, backup safety, session security, rate limits, performance tools, retention, monitoring, concurrent edits, inbox delivery, tracing, messaging, observability, readiness, auth, job, and company APIs backed by
 PostgreSQL, database constraints, migrations, transaction isolation, and independent-connection
 job/company persistence. All job and company endpoints use PostgreSQL.
 
@@ -50,6 +50,18 @@ writers on its disposable stack, captures both databases with exported snapshots
 restores isolated copies and compares rows, schema, owners and grants. It also
 checks runtime writes, identity sequences and source preservation. Only a summary
 report is uploaded; database archives remain private. See [backup/restore](backup-restore.md).
+
+Idempotency/application tests cover same-key retries and original-response replay,
+changed payload conflicts, expiry, actor scoping, failed-write rollback, validation
+privacy, ownership, transitions, listing and job-history protection. Independent
+connections exercise same-key races, duplicate applications, stale concurrent
+reviews and company-transfer/apply serialization. A deterministic regression holds
+a job-transfer transaction open until the applicant is waiting for its row lock,
+then verifies the applicant reads the current company after acquiring the lock.
+Notification tests verify all four application states and duplicate receipt handling.
+CI's optional scale-profile smoke uses HAProxy and real replicas to verify these
+boundaries during process failure. See [contracts](idempotency-applications.md)
+and [the demo](multiple-instances.md).
 
 ## PostgreSQL setup
 

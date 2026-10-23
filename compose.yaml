@@ -247,7 +247,7 @@ services:
       retries: 12
     restart: unless-stopped
 
-  publisher:
+  publisher: &publisher-service
     image: workwise-api:local
     build: .
     command: ["python", "-m", "workwise.messaging.publisher"]
@@ -276,7 +276,7 @@ services:
     cap_drop: [ALL]
     restart: unless-stopped
 
-  notification-worker:
+  notification-worker: &worker-service
     image: workwise-api:local
     build: .
     command: ["python", "-m", "workwise.messaging.worker"]
@@ -359,7 +359,7 @@ services:
     tty: true
     restart: "no"
 
-  api:
+  api: &api-service
     image: workwise-api:local
     build: .
     environment:
@@ -384,6 +384,43 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    restart: unless-stopped
+
+  api-replica:
+    <<: *api-service
+    profiles: [scale]
+    ports: []
+
+  publisher-replica:
+    <<: *publisher-service
+    profiles: [scale]
+
+  worker-replica:
+    <<: *worker-service
+    profiles: [scale]
+
+  gateway:
+    image: haproxy:3.2-alpine
+    profiles: [scale]
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:8002:8080"
+    volumes:
+      - ./docker/gateway/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      api-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     restart: unless-stopped
 
 volumes:

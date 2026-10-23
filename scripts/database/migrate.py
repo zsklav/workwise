@@ -29,6 +29,7 @@ def main() -> None:
             connection.execute(text("GRANT SELECT, INSERT ON TABLE public.users TO " + role))
             connection.execute(text("GRANT UPDATE (token_version) ON TABLE public.users TO " + role))
             connection.execute(text("GRANT SELECT, INSERT, UPDATE ON TABLE public.auth_refresh_tokens, public.auth_rate_limits TO " + role))
+            connection.execute(text("GRANT SELECT, INSERT, UPDATE ON TABLE public.idempotency_records, public.job_applications TO " + role))
             connection.execute(text("GRANT SELECT ON TABLE public.alembic_version TO " + role))
             connection.execute(text("GRANT SELECT, INSERT, UPDATE ON TABLE public.outbox_events TO " + role))
         print("Migrations and runtime grants completed.")

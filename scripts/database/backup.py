@@ -19,7 +19,8 @@ from workwise.core.paths import ROOT_DIR
 DATABASES = {
     "jobs": {"service": "db", "database": "workwise", "owner": "workwise_migrator",
              "tables": {"alembic_version": "version_num", "users": "id", "companies": "id",
-                        "jobs": "id", "outbox_events": "id", "auth_refresh_tokens": "id", "auth_rate_limits": "bucket_hash"}},
+                        "jobs": "id", "outbox_events": "id", "auth_refresh_tokens": "id", "auth_rate_limits": "bucket_hash",
+                        "idempotency_records": "id", "job_applications": "id"}},
     "notifications": {"service": "notification-db", "database": "notifications", "owner": "postgres",
                       "tables": {"notification_schema_version": "version", "notification_receipts": "event_id", "notifications": "event_id"}},
 }

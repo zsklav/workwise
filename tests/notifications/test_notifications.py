@@ -12,7 +12,7 @@ from sqlalchemy import event as sql_event, text
 from sqlalchemy.exc import OperationalError
 
 from workwise.api.main import app as public_app
-from workwise.messaging.events import job_created, parse_event
+from workwise.messaging.events import ApplicationChanged, job_created, parse_event
 from workwise.notifications.store import EventConflict, record_notification
 from workwise.db.models import User
 from workwise.notifications import api
@@ -107,6 +107,19 @@ def test_receipt_rolls_back_if_inbox_insert_fails(notification_state, db_connect
         sql_event.remove(db_connection, "before_cursor_execute", fail)
     assert db_connection.scalar(text("SELECT count(*) FROM notification_receipts")) == 0
     assert db_connection.scalar(text("SELECT count(*) FROM notifications")) == 0
+
+
+@pytest.mark.parametrize("status", ["applied", "shortlisted", "rejected", "hired"])
+def test_application_event_creates_private_inbox_item_once(notification_state, inbox, status):
+    envelope = ApplicationChanged(event_id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        application_id=42, application_version=1, job_id=3, company_id=4, recipient_id=7, status=status)
+    parsed = parse_event(envelope.model_dump_json().encode())
+    assert isinstance(parsed, ApplicationChanged)
+    assert record_notification(notification_state, parsed)
+    assert not record_notification(notification_state, parsed)
+    rows = inbox.get("/notifications").json()
+    assert len(rows) == 1 and rows[0]["event_id"] == str(envelope.event_id)
+    assert rows[0]["message"] == f"Application #42 for job #3: {status}."
 
 
 def test_notification_migration_preserves_receipts_and_is_repeatable(db_connection):

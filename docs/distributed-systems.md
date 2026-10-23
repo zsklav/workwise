@@ -5,6 +5,10 @@ database run as independent processes/containers. Job creation emits a recipient
 event and delivers an **in-app inbox notification**. A separate internal API serves
 the caller's inbox through the main authenticated API; no external email is sent.
 See [inbox and tracing](notifications-tracing.md) for the current workflow and rollout.
+Application creation and reviews also emit `application.changed.v1` events to the
+applicant, including an application version. The existing receipt/inbox transaction
+handles duplicates for these events too. See [application contracts](idempotency-applications.md)
+and the [two-instance process-failure demo](multiple-instances.md).
 
 ```mermaid
 flowchart LR

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
@@ -136,3 +137,29 @@ class RefreshRequest(BaseModel):
         if not re.fullmatch(r"[A-Za-z0-9_-]{64}",value.get_secret_value()):
             raise ValueError("Invalid refresh token format")
         return value
+
+
+ApplicationStatus = Literal["applied", "shortlisted", "rejected", "hired"]
+
+
+class ApplicationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    cover_letter: str | None = Field(default=None, max_length=4000)
+
+
+class ApplicationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    job_id: int
+    applicant_id: int
+    cover_letter: str | None
+    status: ApplicationStatus
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApplicationReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(gt=0, strict=True)
+    status: Literal["shortlisted", "rejected", "hired"]

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 
-from workwise.api.routes import auth, companies, jobs, notifications, operations
+from workwise.api.routes import applications, auth, companies, jobs, notifications, operations
 from workwise.core.observability import ObservabilityMiddleware
 from workwise.core.tracing import TracingMiddleware, configure_tracing
 
@@ -16,11 +16,13 @@ app.include_router(auth.router)
 app.include_router(notifications.router)
 app.include_router(operations.router)
 app.include_router(jobs.router)
+app.include_router(applications.router)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, error: RequestValidationError):
-    if request.url.path.startswith("/auth/"):
+    if (request.url.path.startswith("/auth/") or "applications" in request.url.path.split("/")
+            or any("idempotency-key" in item["loc"] for item in error.errors())):
         # Validation errors can otherwise echo raw credentials in their input.
         errors = [{key: value for key, value in item.items() if key not in {"input", "ctx"}}
                   for item in error.errors()]

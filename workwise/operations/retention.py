@@ -8,6 +8,7 @@ from sqlalchemy.engine import URL
 
 
 TARGETS = {
+    "idempotency": ("idempotency_records", "id", "expires_at < :cutoff", "expires_at, id"),
     "auth-tokens": ("auth_refresh_tokens", "id", "expires_at < :cutoff", "expires_at, id"),
     "auth-limits": ("auth_rate_limits", "bucket_hash", "window_end < :cutoff", "window_end, bucket_hash"),
     "outbox": ("outbox_events", "id", "published_at IS NOT NULL AND published_at < :cutoff", "published_at, id"),

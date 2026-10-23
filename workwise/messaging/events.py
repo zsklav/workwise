@@ -20,10 +20,18 @@ class JobCreatedV2(JobCreated):
     recipient_id: int = Field(gt=0, strict=True)
 
 
-event_adapter = TypeAdapter(Annotated[JobCreated | JobCreatedV2, Field(discriminator="event_type")])
+class ApplicationChanged(JobCreated):
+    event_type: Literal["application.changed.v1"] = "application.changed.v1"
+    application_id: int = Field(gt=0, strict=True)
+    application_version: int = Field(gt=0, strict=True)
+    recipient_id: int = Field(gt=0, strict=True)
+    status: Literal["applied", "shortlisted", "rejected", "hired"]
 
 
-def parse_event(body: bytes) -> JobCreated | JobCreatedV2:
+event_adapter = TypeAdapter(Annotated[JobCreated | JobCreatedV2 | ApplicationChanged, Field(discriminator="event_type")])
+
+
+def parse_event(body: bytes) -> JobCreated | JobCreatedV2 | ApplicationChanged:
     return event_adapter.validate_json(body)
 
 

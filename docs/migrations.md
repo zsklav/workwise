@@ -241,3 +241,23 @@ remained. Role updates remained denied while token_version updates succeeded.
 - [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
 - [Autogeneration and required review](https://alembic.sqlalchemy.org/en/latest/autogenerate.html)
 - [Command reference](https://alembic.sqlalchemy.org/en/latest/api/commands.html)
+## Idempotency and applications: 0011
+
+Revision `0011` creates `idempotency_records` and `job_applications`, their foreign
+keys, unique/check constraints and bounded-list/expiry indexes. Existing rows and
+columns are unchanged. The migration runner grants SELECT/INSERT/UPDATE to the
+runtime role, with no DELETE or schema-management privileges on these tables.
+
+Native verification on 2026-10-23 compared every existing business/auth row before
+and after upgrade, verified the new grants, and found no schema drift. A real
+runtime-role API flow created a keyed job, retried it, applied, shortlisted and
+hired inside an outer rollback transaction, leaving no synthetic application,
+idempotency or outbox rows. Identity sequences can advance across rollback normally.
+Tests separately cover upgrade/downgrade and expired-key cleanup. Backups include
+both new tables; notification storage remains at schema v2.
+
+Downgrading drops the new tables and their history. Do not downgrade a populated
+installation without a reviewed data-recovery plan. In a staged release, deploy
+workers that understand `application.changed.v1` before enabling new event producers.
+
+See [application and retry contracts](idempotency-applications.md).

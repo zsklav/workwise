@@ -9,7 +9,8 @@ Run the commands below from the repository root with the virtual environment act
 | Directory | Responsibility |
 |---|---|
 | `workwise/api/main.py` | Assemble the public FastAPI app, middleware, error handler and routers. |
-| `workwise/api/routes/` | Auth, companies, jobs, notification gateway and operational endpoints. |
+| `workwise/api/routes/` | Auth, companies, jobs, private applications, notification gateway and operational endpoints. |
+| `workwise/api/idempotency.py` | Actor/operation/key reservation and original response replay in the business transaction. |
 | `workwise/api/dependencies.py` | Shared request-scoped database session dependency. |
 | `workwise/api/concurrency.py` | Revision validation and atomic ORM conflict translation. |
 | `workwise/api/schemas.py` | Public request/response validation models. |
@@ -28,6 +29,7 @@ Run the commands below from the repository root with the virtual environment act
 | `migrations/` | Existing jobs Alembic revision history and environment. |
 | `docker/` | Database initialization scripts mounted by Compose. |
 | `docker/monitoring/` | Prometheus scrape/alert configuration, rule tests and provisioned Grafana dashboard. |
+| `docker/gateway/` | HAProxy readiness routing for the optional multiple-instance profile. |
 | `docs/` | Design explanations, setup, guarantees and operational instructions. |
 
 Jobs and inbox storage remain separate. The inbox's storage module now belongs
@@ -51,6 +53,7 @@ Use absolute `workwise.*` imports to make these boundaries visible.
 | Docker config | `python -m scripts.docker.create_env --add-missing` |
 | Docker database backup | `python -m scripts.database.backup backup` |
 | Restore verification copies | `python -m scripts.database.backup drill backups/<checkpoint>` |
+| Multiple-instance demo | `python -m scripts.smoke.scale --allow-service-interruption` |
 | Full test suite | `python -m pytest -q --tb=short` |
 
 The internal service and background commands require their configured databases
