@@ -86,6 +86,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Generate disposable credentials
         run: python3 -m scripts.docker.create_env
+      - name: Raise the API rate limit for load measurements
+        run: echo "API_IP_LIMIT=100000" >> .env.docker
       - name: Validate Compose
         run: docker compose --env-file .env.docker config --quiet
       - name: Build and start isolated stack
