@@ -32,7 +32,7 @@ def test_job_can_move_to_another_company(db_client, company_pair, method):
     assert response.status_code == 200
     expected = {
         "id": job_id, "version": 2, **payload, "company_id": second["id"],
-        "company": second["name"], "description": None,
+        "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": second["name"], "description": None,
     }
     assert response.json() == expected
     assert db_client.get(f"/jobs/{job_id}").json() == expected

@@ -167,11 +167,10 @@ def test_application_input_rejects_spoofing_and_redacts_private_data(actors, pay
     assert all("input" not in error and "ctx" not in error for error in result.json()["detail"])
 
 
-def test_application_protects_job_deletion_and_company_transfer(actors, db_session):
+def test_application_protects_company_transfer(actors, db_session):
     client, users, _, job = actors
     assert client.post(f"/jobs/{job.id}/applications", headers=headers(users, "candidate"), json={}).status_code == 201
     owner = headers(users, "employer")
-    assert client.delete(f"/jobs/{job.id}?version=1", headers=owner).status_code == 409
     other = Company(name="Transfer destination", owner_id=users["employer"].id)
     db_session.add(other)
     db_session.commit()
@@ -340,3 +339,70 @@ def test_applying_waits_for_job_transfer_then_reads_the_current_company(test_eng
         with test_engine.begin() as c:
             c.execute(Job.__table__.update().where(Job.id == ids["job"]).values(company_id=ids["company"]))
             c.execute(delete(Company).where(Company.id == destination))
+
+
+def test_soft_deleted_job_is_hidden_but_keeps_row_and_applications(actors, db_session):
+    client, users, company, job = actors
+    candidate, owner = headers(users, "candidate"), headers(users, "employer")
+    assert client.post(f"/jobs/{job.id}/applications", headers=candidate, json={}).status_code == 201
+
+    assert client.delete(f"/jobs/{job.id}?version=1", headers=owner).status_code == 204
+
+    assert client.get(f"/jobs/{job.id}").status_code == 404
+    assert client.get("/jobs").json() == []
+    assert client.get("/jobs").headers["X-Total-Count"] == "0"
+    assert client.delete(f"/jobs/{job.id}?version=2", headers=owner).status_code == 404
+    assert client.patch(f"/jobs/{job.id}", headers=owner, json={"version": 2, "title": "Revived"}).status_code == 404
+    assert client.post(f"/jobs/{job.id}/applications", headers=headers(users, "outsider"), json={}).status_code == 404
+    db_session.expire_all()
+    row = db_session.get(Job, job.id)
+    assert row is not None and row.deleted_at is not None and row.version == 2
+    assert count(db_session, JobApplication) == 1
+
+
+def test_company_delete_purges_soft_deleted_jobs_but_not_those_with_applications(actors, db_session):
+    client, users, company, job = actors
+    owner = headers(users, "employer")
+    spare = client.post("/jobs", headers=owner, json=job_payload(company)).json()
+    assert client.delete(f"/jobs/{spare['id']}?version=1", headers=owner).status_code == 204
+    assert client.post(f"/jobs/{job.id}/applications", headers=headers(users, "candidate"), json={}).status_code == 201
+    assert client.delete(f"/jobs/{job.id}?version=1", headers=owner).status_code == 204
+
+    assert client.delete(f"/companies/{company.id}?version=1", headers=owner).status_code == 409
+    db_session.expire_all()
+    assert db_session.get(Job, spare["id"]) is not None  # rolled back with the failed delete
+
+
+def test_only_admins_can_restore_a_deleted_job(actors):
+    client, users, _, job = actors
+    owner, admin = headers(users, "employer"), headers(users, "reviewadmin")
+    path = f"/jobs/{job.id}/restore"
+    assert client.post(f"{path}?version=1", headers=admin).status_code == 409  # not deleted yet
+    assert client.delete(f"/jobs/{job.id}?version=1", headers=owner).status_code == 204
+
+    assert client.post(f"{path}?version=2", headers=owner).status_code == 403
+    assert client.post(f"{path}?version=2").status_code == 401
+    assert client.post(f"{path}?version=1", headers=admin).status_code == 409  # stale version
+    assert client.post("/jobs/999999/restore?version=1", headers=admin).status_code == 404
+
+    restored = client.post(f"{path}?version=2", headers=admin)
+    assert restored.status_code == 200
+    assert restored.json()["version"] == 3
+    assert client.get(f"/jobs/{job.id}").json() == restored.json()
+    assert client.post(f"{path}?version=3", headers=admin).status_code == 409
+
+
+def test_admin_lists_deleted_jobs_newest_first(actors):
+    client, users, company, job = actors
+    owner, admin = headers(users, "employer"), headers(users, "reviewadmin")
+    second = client.post("/jobs", headers=owner, json=job_payload(company)).json()
+    assert client.get("/jobs/deleted", headers=admin).json() == []
+    for target in (job.id, second["id"]):
+        assert client.delete(f"/jobs/{target}?version=1", headers=owner).status_code == 204
+
+    assert client.get("/jobs/deleted", headers=owner).status_code == 403
+    assert client.get("/jobs/deleted").status_code == 401
+    listed = client.get("/jobs/deleted", headers=admin)
+    assert [item["id"] for item in listed.json()] == [second["id"], job.id]
+    assert listed.headers["X-Total-Count"] == "2"
+    assert [item["id"] for item in client.get("/jobs/deleted?limit=1", headers=admin).json()] == [second["id"]]

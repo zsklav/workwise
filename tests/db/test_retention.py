@@ -96,3 +96,21 @@ def test_concurrent_cleaners_skip_locked_rows(test_engine):
             with test_engine.begin() as connection:
                 for identity in ids:
                     connection.execute(text("DELETE FROM outbox_events WHERE id=:id"), {"id":identity})
+
+
+def test_deleted_job_purge_keeps_live_recent_and_applied_jobs(db_connection):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(days=100)
+    owner = db_connection.scalar(text("INSERT INTO users(username,password_hash,role) VALUES ('purgeowner','x','member') RETURNING id"))
+    company = db_connection.scalar(text("INSERT INTO companies(name,owner_id) VALUES ('Purge Co',:o) RETURNING id"), {"o": owner})
+    def job(title, deleted):
+        return db_connection.scalar(text("INSERT INTO jobs(title,company_id,location,deleted_at) VALUES (:t,:c,'Remote',:d) RETURNING id"),
+                                    {"t": title, "c": company, "d": deleted})
+    purge, live, recent, applied = job("old", old), job("live", None), job("recent", now - timedelta(days=5)), job("applied", old)
+    db_connection.execute(text("INSERT INTO job_applications(job_id,applicant_id,status,created_at,updated_at) VALUES (:j,:u,'applied',now(),now())"),
+                          {"j": applied, "u": owner})
+    preview = cleanup_batch(db_connection, "deleted-jobs", days=90, now=now)
+    assert preview["selected"] == 1 and preview["deleted"] == 0
+    assert cleanup_batch(db_connection, "deleted-jobs", days=90, apply=True, now=now)["deleted"] == 1
+    assert set(db_connection.scalars(text("SELECT id FROM jobs"))) == {live, recent, applied}
+    assert purge not in set(db_connection.scalars(text("SELECT id FROM jobs")))

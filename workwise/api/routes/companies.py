@@ -2,13 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from workwise.api.dependencies import DbSession
 from workwise.api.concurrency import commit_versioned, require_version
-from workwise.db.models import Company
+from workwise.db.models import Company, Job, JobApplication
 from workwise.api.schemas import CompanyCreate, CompanyRead, CompanyReplace, CompanyUpdate
 from workwise.core.security import CurrentUser, require_company_access
 
@@ -102,6 +102,11 @@ def delete_company(company_id: int, db: DbSession, user: CurrentUser,
     company = find_company(company_id, db)
     require_company_access(company, user)
     require_version(company, version)
+    # Soft-deleted jobs without applications are no longer needed; the ones that
+    # still have applications keep blocking deletion through the foreign key.
+    db.execute(delete(Job).where(
+        Job.company_id == company.id, Job.deleted_at.is_not(None),
+        ~exists().where(JobApplication.job_id == Job.id)))
     db.delete(company)
     commit_company(db)
     return Response(status_code=204)

@@ -51,7 +51,7 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
                 stored = connection.execute(
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
-                assert dict(stored) == {"id": job_id, "version": 1, **payload}
+                assert dict(stored) == {"id": job_id, "version": 1, "deleted_at": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, **payload}
 
             updated_payload = {
                 **payload,
@@ -65,7 +65,7 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
                 stored = connection.execute(
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
-                assert dict(stored) == {"id": job_id, "version": 2, **updated_payload}
+                assert dict(stored) == {"id": job_id, "version": 2, "deleted_at": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, **updated_payload}
 
             response = client.patch(f"/jobs/{job_id}", json={"version": 2, "description": None})
             assert response.status_code == 200
@@ -75,7 +75,7 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
                     select(Job.__table__).where(Job.id == job_id)
                 ).mappings().one()
                 assert dict(stored) == {
-                    "id": job_id, "version": 3, **updated_payload, "description": None
+                    "id": job_id, "version": 3, "deleted_at": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, **updated_payload, "description": None
                 }
 
             response = client.delete(f"/jobs/{job_id}", params={"version": 3})
@@ -84,8 +84,8 @@ def test_crud_commits_visible_to_independent_connections(test_engine: Engine):
 
             with test_engine.connect() as connection:
                 assert connection.scalar(
-                    select(Job.id).where(Job.id == job_id)
-                ) is None
+                    select(Job.deleted_at).where(Job.id == job_id)
+                ) is not None  # soft delete keeps the row
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)

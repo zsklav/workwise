@@ -26,7 +26,7 @@ TRANSITIONS = {"applied": {"shortlisted", "rejected"}, "shortlisted": {"hired", 
 
 
 def find_job(db, job_id, *, lock=False):
-    statement = select(Job).where(Job.id == job_id)
+    statement = select(Job).where(Job.id == job_id, Job.deleted_at.is_(None))
     if lock:
         # After waiting on a moved job, PostgreSQL can recheck the job tuple
         # against an earlier outer-join tuple. Load the company after the lock.
