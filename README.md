@@ -59,7 +59,7 @@ include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
 See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow and guarantees.
-Live cloud deployment is still planned.
+A Render free-tier blueprint is prepared (`render.yaml`, [deploy guide](docs/deploy-render.md)) but has not been deployed yet.
 
 ## Stack
 
