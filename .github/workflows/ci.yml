@@ -62,8 +62,12 @@ jobs:
           python -m pip check
           python -m alembic check
           python -c "from workwise.db.session import engine; from sqlalchemy import text; connection = engine.connect(); connection.execute(text('SELECT version_num FROM public.alembic_version')); connection.close()"
-      - name: Run PostgreSQL tests
-        run: python -m pytest -q --tb=short
+      - name: Lint
+        run: python -m ruff check workwise scripts tests migrations
+      - name: Audit dependencies
+        run: python -m pip_audit -r requirements.txt
+      - name: Run PostgreSQL tests with coverage
+        run: python -m pytest -q --tb=short --cov=workwise --cov-report=term-missing:skip-covered
       - name: Measure SQL plans on temporary fixtures
         run: python -m scripts.performance.query_plan
       - name: Save query plan evidence

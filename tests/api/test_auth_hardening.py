@@ -13,7 +13,7 @@ from workwise.api.main import app
 from workwise.core.auth_limits import bucket_key
 from workwise.core.auth_sessions import digest
 from workwise.core.security import auth_settings, password_hasher
-from workwise.db.models import AuthRateLimit, RefreshToken, User
+from workwise.db.models import RefreshToken, User
 from workwise.db.session import get_db
 
 PASSWORD="Security test password with enough characters"
