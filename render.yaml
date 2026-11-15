@@ -39,6 +39,11 @@ services:
       # Render's proxy sits in a private range; X-Forwarded-For is only believed from there.
       - key: TRUSTED_PROXIES
         value: 10.0.0.0/8,172.16.0.0/12
+      # Resumes are stored on the container disk, which Render wipes on every deploy and restart.
+      - key: RESUME_DIR
+        value: /data/resumes
+      # Password reset stays off until an email backend is configured: EMAIL_BACKEND=smtp plus SMTP_HOST,
+      # SMTP_USER, SMTP_PASSWORD and PASSWORD_RESET_URL (your front end reset page).
       # Set to your front end's origin, for example https://app.example.com. Empty keeps CORS off.
       - key: CORS_ORIGINS
         sync: false

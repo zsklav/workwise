@@ -374,8 +374,15 @@ services:
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       API_IP_LIMIT: ${API_IP_LIMIT:-300}
+      RESUME_DIR: /data/resumes
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-disabled}
+      EMAIL_FROM: ${EMAIL_FROM:-no-reply@workwise.local}
+      SMTP_HOST: ${SMTP_HOST:-}
+      PASSWORD_RESET_URL: ${PASSWORD_RESET_URL:-http://localhost:3000/reset-password}
     ports:
       - "127.0.0.1:${API_PORT:-8001}:8000"
+    volumes:
+      - resume_data:/data/resumes
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -431,5 +438,6 @@ volumes:
   prometheus_data:
   grafana_data:
   postgres_data:
+  resume_data:
   notification_data:
   rabbitmq_data:

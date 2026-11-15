@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from workwise.api.dependencies import DbSession
 from workwise.db.models import User
-from workwise.api.schemas import RefreshRequest, TokenRead, UserRead, UserSignup
+from workwise.api.schemas import EmailChange, RefreshRequest, TokenRead, UserRead, UserSignup
 from workwise.core.security import CurrentUser, dummy_password_hash, password_hasher
 from workwise.core.auth_limits import throttle
 from workwise.core.auth_sessions import issue, locked_user, revoke_all, rotate
@@ -24,7 +24,7 @@ def signup(payload: UserSignup, db: DbSession, request: Request, response: Respo
     user = User(
         username=payload.username,
         password_hash=password_hasher.hash(payload.password.get_secret_value()),
-        role="member", is_active=True,
+        role="member", is_active=True, email=payload.email,
     )
     db.add(user)
     try:
@@ -33,6 +33,8 @@ def signup(payload: UserSignup, db: DbSession, request: Request, response: Respo
         db.rollback()
         if isinstance(error.orig, UniqueViolation) and error.orig.diag.constraint_name == "uq_users_username":
             raise HTTPException(status_code=409, detail="Username already exists") from error
+        if isinstance(error.orig, UniqueViolation) and error.orig.diag.constraint_name == "uq_users_email":
+            raise HTTPException(status_code=409, detail="Email already registered") from error
         raise
     db.refresh(user)
     return user
@@ -77,6 +79,25 @@ def logout(user: CurrentUser, db: DbSession):
         raise HTTPException(401,"Could not validate credentials",headers={"WWW-Authenticate":"Bearer","Cache-Control":"no-store"})
     revoke_all(db,current)
     return Response(status_code=204,headers={"Cache-Control":"no-store"})
+
+
+@router.put("/me/email", response_model=UserRead)
+def change_email(payload: EmailChange, user: CurrentUser, db: DbSession, request: Request, response: Response) -> User:
+    """Set the address used for password resets. The current password is required."""
+    throttle(db, request, "login", account=user.username)
+    response.headers["Cache-Control"] = "no-store"
+    if not password_hasher.verify(payload.password.get_secret_value(), user.password_hash):
+        raise HTTPException(status_code=403, detail="Incorrect password")
+    user.email = payload.email
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        if isinstance(error.orig, UniqueViolation) and error.orig.diag.constraint_name == "uq_users_email":
+            raise HTTPException(status_code=409, detail="Email already registered") from error
+        raise
+    db.refresh(user)
+    return user
 
 
 @router.get("/me", response_model=UserRead)

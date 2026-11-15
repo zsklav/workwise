@@ -11,6 +11,7 @@ TARGETS = {
     "idempotency": ("idempotency_records", "id", "expires_at < :cutoff", "expires_at, id"),
     "auth-tokens": ("auth_refresh_tokens", "id", "expires_at < :cutoff", "expires_at, id"),
     "auth-limits": ("auth_rate_limits", "bucket_hash", "window_end < :cutoff", "window_end, bucket_hash"),
+    "password-resets": ("password_reset_tokens", "id", "expires_at < :cutoff", "expires_at, id"),
     "outbox": ("outbox_events", "id", "published_at IS NOT NULL AND published_at < :cutoff", "published_at, id"),
     # Soft-deleted jobs that nothing references; jobs with applications are kept for the record.
     "deleted-jobs": ("jobs", "id", "deleted_at IS NOT NULL AND deleted_at < :cutoff AND NOT EXISTS "

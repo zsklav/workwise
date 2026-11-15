@@ -15,7 +15,7 @@ def test_signup_login_and_me_without_exposing_password(anonymous_client, db_sess
     client = anonymous_client
     response = client.post("/auth/signup", json={"username": "  Alice_123  ", "password": PASSWORD})
     assert response.status_code == 201
-    expected = {"id": response.json()["id"], "username": "alice_123", "role": "member", "is_active": True}
+    expected = {"id": response.json()["id"], "username": "alice_123", "role": "member", "is_active": True, "email": None}
     assert response.json() == expected
     stored = db_session.scalar(select(User).where(User.username == "alice_123"))
     assert stored.password_hash != PASSWORD

@@ -20,7 +20,8 @@ DATABASES = {
     "jobs": {"service": "db", "database": "workwise", "owner": "workwise_migrator",
              "tables": {"alembic_version": "version_num", "users": "id", "companies": "id",
                         "jobs": "id", "outbox_events": "id", "auth_refresh_tokens": "id", "auth_rate_limits": "bucket_hash",
-                        "idempotency_records": "id", "job_applications": "id"}},
+                        "idempotency_records": "id", "job_applications": "id",
+                        "password_reset_tokens": "id", "user_resumes": "user_id"}},
     "notifications": {"service": "notification-db", "database": "notifications", "owner": "postgres",
                       "tables": {"notification_schema_version": "version", "notification_receipts": "event_id", "notifications": "event_id"}},
 }

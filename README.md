@@ -12,6 +12,7 @@ The project was built from scratch; no Java migration is included.
 ## Implemented
 
 - Job creation, listing, retrieval, replacement, partial updates, and deletion.
+- Password reset by email with a pluggable sender (disabled by default) and PDF resume upload on local storage; see [the guide](docs/password-reset-and-resume.md).
 - Soft delete for jobs: deleted jobs are hidden but keep their row and applications; admins can list and restore them.
 - Job salary range, remote flag and job type with filters; `/v1` API prefix with the old paths kept as hidden aliases.
 - Job search (`q` on title, description, location), `sort`, and an `X-Total-Count` header.

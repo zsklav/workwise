@@ -87,6 +87,8 @@ class User(Base):
         CheckConstraint("username ~ '^[a-z0-9_]{3,50}$'", name="ck_users_username"),
         CheckConstraint("role IN ('member', 'admin')", name="ck_users_role"),
         CheckConstraint("token_version > 0", name="ck_users_token_version_positive"),
+        UniqueConstraint("email", name="uq_users_email"),
+        CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),
     )
 
     id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
@@ -95,6 +97,27 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'member'"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", name="fk_reset_user", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserResume(Base):
+    __tablename__ = "user_resumes"
+    __table_args__ = (CheckConstraint("size_bytes > 0", name="ck_resume_size_positive"),)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", name="fk_resume_user", ondelete="CASCADE"), primary_key=True)
+    storage_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class RefreshToken(Base):

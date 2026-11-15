@@ -9,8 +9,8 @@ COPY requirements.txt ./
 RUN python -m pip install --disable-pip-version-check -r requirements.txt \
     && groupadd --gid 10001 workwise \
     && useradd --uid 10001 --gid 10001 --no-create-home workwise \
-    && mkdir /app/performance-results \
-    && chown 10001:10001 /app/performance-results
+    && mkdir /app/performance-results /data /data/resumes \
+    && chown 10001:10001 /app/performance-results /data /data/resumes
 
 COPY main.py ./
 COPY workwise/ ./workwise/
