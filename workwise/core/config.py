@@ -1,4 +1,6 @@
 
+from ipaddress import ip_network
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -36,6 +38,17 @@ class AuthSettings(Settings):
     auth_login_account_limit: int = Field(default=10, ge=1, le=100)
     auth_signup_ip_limit: int = Field(default=20, ge=1, le=100)
     auth_refresh_ip_limit: int = Field(default=60, ge=1, le=1000)
+    api_ip_limit: int = Field(default=300, ge=10, le=100000)
+    # Comma-separated CIDRs of reverse proxies whose X-Forwarded-For is believed. Empty = trust none.
+    trusted_proxies: str = ""
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def validate_trusted_proxies(cls, value: str) -> str:
+        for item in value.split(","):
+            if item.strip():
+                ip_network(item.strip())  # raises ValueError on a bad CIDR
+        return value
 
     @field_validator("jwt_secret")
     @classmethod

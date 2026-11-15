@@ -18,7 +18,7 @@ auth_settings = AuthSettings()
 password_hasher = PasswordHash.recommended()
 # Unknown users still perform a password verification operation.
 dummy_password_hash = password_hasher.hash(secrets.token_urlsafe(32))
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/login")
 
 
 def create_access_token(user_id: int, token_version: int = 1) -> str:
