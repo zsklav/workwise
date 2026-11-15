@@ -125,6 +125,7 @@ Apply a single reviewed batch:
 ```powershell
 docker compose --env-file .env.docker run --rm retention-outbox python -m workwise.operations.retention outbox --days 30 --batch-size 500 --apply
 docker compose --env-file .env.docker run --rm retention-inbox python -m workwise.operations.retention inbox --days 90 --batch-size 500 --apply
+docker compose --env-file .env.docker run --rm retention-outbox python -m workwise.operations.retention deleted-jobs --days 90 --batch-size 500 --apply
 ```
 
 For native jobs storage, `python -m workwise.operations.retention outbox` previews

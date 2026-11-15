@@ -38,7 +38,7 @@ def test_create_and_get_job(client: TestClient, company_ids: dict[str, int]):
 
     created_job = create_response.json()
     assert isinstance(created_job["id"], int)
-    assert created_job == {"id": created_job["id"], "version": 1, **payload, "description": None, "company": "Example"}
+    assert created_job == {"id": created_job["id"], "version": 1, **payload, "description": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "Example"}
 
     get_response = client.get(f"/jobs/{created_job['id']}")
 
@@ -99,7 +99,7 @@ def test_update_job(client: TestClient, company_ids: dict[str, int]):
         json={"version": 1, **updated_payload},
     )
 
-    expected_job = {"id": job_id, "version": 2, **updated_payload, "description": None, "company": "Example"}
+    expected_job = {"id": job_id, "version": 2, **updated_payload, "description": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "Example"}
 
     assert update_response.status_code == 200
     assert update_response.json() == expected_job
@@ -167,7 +167,7 @@ def test_create_job_with_optional_description(client: TestClient, company_ids: d
 
     assert response.status_code == 201
     job_id = response.json()["id"]
-    expected_job = {"id": job_id, "version": 1, **payload, "company": "Example"}
+    expected_job = {"id": job_id, "version": 1, **payload, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "Example"}
     assert response.json() == expected_job
     assert client.get(f"/jobs/{job_id}").json() == expected_job
     assert client.get("/jobs").json() == [expected_job]
@@ -187,13 +187,13 @@ def test_put_replaces_and_can_clear_description(client: TestClient, company_ids:
     updated_payload = {**payload, "description": "Updated description"}
     updated = client.put(f"/jobs/{job_id}", json={"version": 1, **updated_payload})
     assert updated.status_code == 200
-    assert updated.json() == {"id": job_id, "version": 2, **updated_payload, "company": "Example"}
+    assert updated.json() == {"id": job_id, "version": 2, **updated_payload, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == updated.json()
 
     replacement = {key: value for key, value in payload.items() if key != "description"}
     cleared = client.put(f"/jobs/{job_id}", json={"version": 2, **replacement})
     assert cleared.status_code == 200
-    assert cleared.json() == {"id": job_id, "version": 3, **replacement, "description": None, "company": "Example"}
+    assert cleared.json() == {"id": job_id, "version": 3, **replacement, "description": None, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "Example"}
     assert client.get(f"/jobs/{job_id}").json() == cleared.json()
 
 
@@ -230,7 +230,7 @@ def test_patch_job_updates_only_title(client: TestClient, company_ids: dict[str,
         "id": job_id, "version": 2,
         **payload,
         "title": "Python Developer",
-        "company": "WorkWise",
+        "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "WorkWise",
     }
 
     assert response.status_code == 200
@@ -253,7 +253,7 @@ def test_patch_description_can_be_replaced_and_cleared(client: TestClient, compa
         response = client.patch(
             f"/jobs/{job_id}", json={"version": version, "description": description}
         )
-        expected = {"id": job_id, "version": version + 1, **payload, "description": description, "company": "WorkWise"}
+        expected = {"id": job_id, "version": version + 1, **payload, "description": description, "salary_min": None, "salary_max": None, "remote": False, "job_type": None, "company": "WorkWise"}
         assert response.status_code == 200
         assert response.json() == expected
         assert client.get(f"/jobs/{job_id}").json() == expected

@@ -27,6 +27,9 @@ class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         CheckConstraint("version > 0", name="ck_jobs_version_positive"),
+        CheckConstraint("salary_min >= 0 AND salary_max >= 0", name="ck_jobs_salary_nonnegative"),
+        CheckConstraint("salary_min IS NULL OR salary_max IS NULL OR salary_max >= salary_min", name="ck_jobs_salary_range"),
+        CheckConstraint("job_type IN ('full_time', 'part_time', 'contract', 'internship')", name="ck_jobs_job_type"),
         Index("ix_jobs_company_id_id", "company_id", "id"),
     )
 
@@ -43,6 +46,11 @@ class Job(Base):
     employer: Mapped["Company"] = relationship(lazy="joined")
     location: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remote: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    job_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     __mapper_args__ = {"version_id_col": version}
 

@@ -261,3 +261,9 @@ installation without a reviewed data-recovery plan. In a staged release, deploy
 workers that understand `application.changed.v1` before enabling new event producers.
 
 See [application and retry contracts](idempotency-applications.md).
+
+## Job soft delete: 0012
+
+Revision `0012` adds nullable `jobs.deleted_at`. `DELETE /jobs/{id}` now sets it and increments `version` instead of removing the row, so applications and history survive. Deleted jobs return 404 from every job and application route and are excluded from lists and counts. Deleting a company first removes its soft-deleted jobs that have no applications; jobs that still have applications keep blocking company deletion (409). Downgrade deletes soft-deleted rows before dropping the column, and stops with a foreign-key error if any of them have applications.
+
+Administrators can undo a soft delete with `POST /jobs/{id}/restore?version=N`, where `N` is the version the delete produced. It returns 403 for non-admins, 404 for unknown jobs and 409 for live jobs or stale versions. Restoring is impossible after the retention purge (`deleted-jobs`) has removed the row.

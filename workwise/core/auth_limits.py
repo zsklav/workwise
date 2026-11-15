@@ -1,5 +1,6 @@
 """Atomic PostgreSQL fixed windows, committed before expensive credential checks."""
 import hashlib
+from ipaddress import ip_address, ip_network
 import hmac
 
 from fastapi import HTTPException, Request
@@ -26,10 +27,42 @@ def reserve(db, key, limit):
         {"key":key,"seconds":auth_settings.auth_rate_window_seconds,"cap":limit+1}).mappings().one()
 
 
+def client_ip(request: Request) -> str:
+    """Peer address, or the real client when the peer is a trusted proxy.
+
+    X-Forwarded-For is read right to left and the first address that is not a
+    trusted proxy wins, so entries a client prepends cannot be used to spoof.
+    """
+    peer = request.client.host if request.client else "unknown-peer"
+    trusted = [ip_network(item.strip()) for item in auth_settings.trusted_proxies.split(",") if item.strip()]
+    if not trusted:
+        return peer
+
+    def is_trusted(value):
+        try:
+            return any(ip_address(value) in network for network in trusted)
+        except ValueError:
+            return False
+
+    if not is_trusted(peer):
+        return peer
+    for hop in reversed(request.headers.get("x-forwarded-for", "").split(",")):
+        hop = hop.strip()
+        if not hop:
+            continue
+        try:
+            ip_address(hop)
+        except ValueError:
+            return peer  # malformed header: fall back to the proxy address
+        if not is_trusted(hop):
+            return hop
+    return peer
+
+
 def throttle(db, request: Request, action, *, account=None):
-    ip = request.client.host if request.client else "unknown-peer"
+    ip = client_ip(request)
     limits={"login":auth_settings.auth_login_ip_limit,"signup":auth_settings.auth_signup_ip_limit,
-            "refresh":auth_settings.auth_refresh_ip_limit}
+            "refresh":auth_settings.auth_refresh_ip_limit,"api":auth_settings.api_ip_limit}
     retry=None
     try:
         db.execute(text("SET LOCAL lock_timeout = '2s'"))
@@ -45,6 +78,6 @@ def throttle(db, request: Request, action, *, account=None):
         db.commit()
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(503,"Authentication temporarily unavailable",headers={"Retry-After":"5","Cache-Control":"no-store"}) from None
+        raise HTTPException(503,"Rate limiting temporarily unavailable" if action == "api" else "Authentication temporarily unavailable",headers={"Retry-After":"5","Cache-Control":"no-store"}) from None
     if retry is not None:
-        raise HTTPException(429,"Too many authentication attempts",headers={"Retry-After":str(retry),"Cache-Control":"no-store"})
+        raise HTTPException(429,"Too many requests" if action == "api" else "Too many authentication attempts",headers={"Retry-After":str(retry),"Cache-Control":"no-store"})

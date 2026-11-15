@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 
 from workwise.api.main import app as public_app
 from workwise.messaging.events import ApplicationChanged, job_created, parse_event
-from workwise.notifications.store import EventConflict, record_notification
+from workwise.notifications.store import record_notification
 from workwise.db.models import User
 from workwise.notifications import api
 from workwise.notifications.contracts import service_token

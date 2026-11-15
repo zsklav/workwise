@@ -12,6 +12,12 @@ The project was built from scratch; no Java migration is included.
 ## Implemented
 
 - Job creation, listing, retrieval, replacement, partial updates, and deletion.
+- Soft delete for jobs: deleted jobs are hidden but keep their row and applications; admins can list and restore them.
+- Job salary range, remote flag and job type with filters; `/v1` API prefix with the old paths kept as hidden aliases.
+- Job search (`q` on title, description, location), `sort`, and an `X-Total-Count` header.
+- Per-IP rate limit on every route except `/health`, `/ready` and `/metrics` (`API_IP_LIMIT`, default 300 per window), stored in PostgreSQL so all instances share it.
+- Opt-in CORS (`CORS_ORIGINS`) and baseline security headers on every response.
+- CI runs ruff, a dependency audit (pip-audit) and tests with coverage (85% locally, 415 tests).
 - Job-list pagination with validated limit/offset and deterministic ID ordering.
 - Optional exact company filtering, applied before pagination.
 - Company creation, paginated listing, retrieval, replacement, partial updates,
@@ -36,7 +42,7 @@ The project was built from scratch; no Java migration is included.
 - JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
 - Admin-only Prometheus-format snapshots at `/metrics`.
 - Optional Prometheus/Grafana stack, service scrape credentials, dashboard and alert rules.
-- Bounded retention previews/cleanup preserving pending events, unread inbox items and receipts.
+- Bounded retention previews/cleanup preserving pending events, unread inbox items and receipts, plus a purge of old soft-deleted jobs that have no applications.
 - Repeatable HTTP/SQL performance reports and measured company/order index tuning.
 - Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
 - A RabbitMQ publisher, notification worker, and independent notification database/API.
@@ -53,7 +59,7 @@ include the company's name as read-only `company` text. Create a company first,
 then use its returned ID when creating a job. Legacy company names have been
 backfilled without changing their case or surrounding whitespace.
 See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow and guarantees.
-Live cloud deployment is still planned.
+A Render free-tier blueprint is prepared (`render.yaml`, [deploy guide](docs/deploy-render.md)) but has not been deployed yet.
 
 ## Stack
 
@@ -288,12 +294,14 @@ permission on both its current company and destination company.
 | GET | `/health` | Process health | 200 |
 | GET | `/ready` | Database reachable and at the expected schema revision | 200 |
 | GET | `/metrics` | Prometheus HTTP metrics; admin bearer token required | 200 |
-| GET | `/jobs` | List a page of jobs in ID order | 200 |
+| GET | `/v1/jobs` | Search and filter jobs: `q`, `company`, `company_id`, `remote`, `job_type`, `min_salary`, `sort`, `limit`, `offset`; total in `X-Total-Count` | 200 |
+| GET | `/v1/jobs/deleted` | Admin only: soft-deleted jobs, newest first | 200 |
+| POST | `/v1/jobs/{job_id}/restore?version=N` | Admin only: undo a soft delete | 200 |
 | GET | `/jobs/{job_id}` | Retrieve a job | 200 |
 | POST | `/jobs` | Create a job | 201 |
 | PUT | `/jobs/{job_id}` | Replace editable job fields | 200 |
 | PATCH | `/jobs/{job_id}` | Update supplied fields only | 200 |
-| DELETE | `/jobs/{job_id}` | Delete a job, no response body | 204 |
+| DELETE | `/jobs/{job_id}` | Soft-delete a job (hidden, applications kept), no response body | 204 |
 | POST | `/companies` | Create a company with a unique name | 201 |
 | GET | `/companies` | List a page of companies in ID order | 200 |
 | GET | `/companies/{company_id}` | Retrieve a company | 200 |
@@ -303,6 +311,36 @@ permission on both its current company and destination company.
 | POST | `/auth/signup` | Register a member using JSON username/password | 201 |
 | POST | `/auth/login` | Exchange password-grant form credentials for a JWT | 200 |
 | GET | `/auth/me` | Return the authenticated user | 200 |
+
+### Example requests
+
+All paths also work under `/v1`, which is the documented form. The unprefixed
+paths are hidden aliases.
+
+```bash
+BASE=http://127.0.0.1:8001
+
+# Sign up and log in
+curl -X POST $BASE/v1/auth/signup -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"a long passphrase 2026"}'
+TOKEN=$(curl -s -X POST $BASE/v1/auth/login -d 'username=alice&password=a long passphrase 2026' | jq -r .access_token)
+
+# Create a company, then a remote job in it
+curl -X POST $BASE/v1/companies -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Acme"}'
+curl -X POST $BASE/v1/jobs -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Backend Engineer","company_id":1,"location":"Remote","remote":true,
+       "job_type":"full_time","salary_min":900000,"salary_max":1500000}'
+
+# Search: remote full-time jobs matching "backend", highest pay first
+curl -i "$BASE/v1/jobs?q=backend&remote=true&job_type=full_time&sort=-salary_max&limit=10"
+
+# Soft delete, then (as admin) restore using the version the delete produced
+curl -X DELETE "$BASE/v1/jobs/1?version=1" -H "Authorization: Bearer $TOKEN"
+curl -X POST "$BASE/v1/jobs/1/restore?version=2" -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Over the per-IP limit the API answers `429` with `Retry-After`.
 
 ### Sign in through Swagger
 

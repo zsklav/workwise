@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+
+JobType = Literal["full_time", "part_time", "contract", "internship"]
+MAX_SALARY = 100_000_000
 
 
 class JobCreate(BaseModel):
@@ -11,6 +14,16 @@ class JobCreate(BaseModel):
     company_id: int = Field(gt=0, strict=True)
     location: str = Field(min_length=1)
     description: str | None = None
+    salary_min: int | None = Field(default=None, ge=0, le=MAX_SALARY, strict=True)
+    salary_max: int | None = Field(default=None, ge=0, le=MAX_SALARY, strict=True)
+    remote: bool = Field(default=False, strict=True)
+    job_type: JobType | None = None
+
+    @model_validator(mode="after")
+    def check_salary_range(self):
+        if self.salary_min is not None and self.salary_max is not None and self.salary_max < self.salary_min:
+            raise ValueError("salary_max must not be below salary_min")
+        return self
 
 
 class JobRead(BaseModel):
@@ -23,6 +36,10 @@ class JobRead(BaseModel):
     company: str
     location: str
     description: str | None = None
+    salary_min: int | None = None
+    salary_max: int | None = None
+    remote: bool = False
+    job_type: JobType | None = None
 
 
 class JobReplace(JobCreate):
@@ -46,8 +63,12 @@ class JobUpdate(BaseModel):
         default=None, min_length=1, description="May be omitted; explicit null is rejected."
     )
     description: str | None = None
+    salary_min: int | None = Field(default=None, ge=0, le=MAX_SALARY, strict=True)
+    salary_max: int | None = Field(default=None, ge=0, le=MAX_SALARY, strict=True)
+    remote: bool = Field(default=False, strict=True, description="May be omitted; explicit null is rejected.")
+    job_type: JobType | None = None
 
-    @field_validator("title", "company_id", "location")
+    @field_validator("title", "company_id", "location", "remote")
     @classmethod
     def reject_null_for_required_fields(cls, value: str | int | None) -> str | int:
         # Omitted defaults are not validated; explicitly supplied nulls are.
