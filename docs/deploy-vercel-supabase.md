@@ -74,3 +74,5 @@ python -m workwise.cli.manage_users create-admin <username>
   `powershell -ExecutionPolicy Bypass -File scripts\deploy\check_vercel_db.ps1`.
 - One-time database setup (migrations and first admin) is
   `scripts\deploy\supabase_setup.ps1`.
+- Fill the live demo with fictional companies and jobs (safe to repeat):
+  `python -m scripts.deploy.seed_demo --base https://workwise-murex.vercel.app --username <admin>`
