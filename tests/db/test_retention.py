@@ -114,3 +114,13 @@ def test_deleted_job_purge_keeps_live_recent_and_applied_jobs(db_connection):
     assert cleanup_batch(db_connection, "deleted-jobs", days=90, apply=True, now=now)["deleted"] == 1
     assert set(db_connection.scalars(text("SELECT id FROM jobs"))) == {live, recent, applied}
     assert purge not in set(db_connection.scalars(text("SELECT id FROM jobs")))
+
+
+def test_expired_password_reset_tokens_are_purged(db_connection):
+    now = datetime.now(timezone.utc)
+    user = db_connection.scalar(text("INSERT INTO users(username,password_hash,role) VALUES ('resetpurge','x','member') RETURNING id"))
+    for days in (60, 1):
+        db_connection.execute(text("INSERT INTO password_reset_tokens(id,user_id,token_hash,created_at,expires_at) VALUES (:id,:u,:h,:c,:e)"),
+                              {"id": uuid4(), "u": user, "h": uuid4().hex * 2, "c": now - timedelta(days=days), "e": now - timedelta(days=days)})
+    assert cleanup_batch(db_connection, "password-resets", days=30, apply=True, now=now)["deleted"] == 1
+    assert db_connection.scalar(text("SELECT count(*) FROM password_reset_tokens")) == 1

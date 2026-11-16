@@ -62,7 +62,7 @@ def client_ip(request: Request) -> str:
 def throttle(db, request: Request, action, *, account=None):
     ip = client_ip(request)
     limits={"login":auth_settings.auth_login_ip_limit,"signup":auth_settings.auth_signup_ip_limit,
-            "refresh":auth_settings.auth_refresh_ip_limit,"api":auth_settings.api_ip_limit}
+            "refresh":auth_settings.auth_refresh_ip_limit,"api":auth_settings.api_ip_limit,"reset":auth_settings.auth_reset_ip_limit}
     retry=None
     try:
         db.execute(text("SET LOCAL lock_timeout = '2s'"))

@@ -1,5 +1,6 @@
 
 from ipaddress import ip_network
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,20 @@ class AuthSettings(Settings):
     auth_signup_ip_limit: int = Field(default=20, ge=1, le=100)
     auth_refresh_ip_limit: int = Field(default=60, ge=1, le=1000)
     api_ip_limit: int = Field(default=300, ge=10, le=100000)
+    auth_reset_ip_limit: int = Field(default=10, ge=1, le=1000)
+    # Password reset email. "disabled" refuses requests; "console" logs the message (development only).
+    email_backend: Literal["disabled", "console", "smtp"] = "disabled"
+    email_from: str = "no-reply@workwise.local"
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_user: str = ""
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = True
+    password_reset_url: str = "http://localhost:3000/reset-password"
+    password_reset_minutes: int = Field(default=30, ge=5, le=120)
+    # Resume uploads are stored as local files; the directory must be writable and persistent.
+    resume_dir: str = "data/resumes"
+    resume_max_bytes: int = Field(default=2_000_000, ge=1_000, le=10_000_000)
     # Comma-separated CIDRs of reverse proxies whose X-Forwarded-For is believed. Empty = trust none.
     trusted_proxies: str = ""
 

@@ -118,11 +118,21 @@ class CompanyUpdate(BaseModel):
         return value
 
 
+EMAIL_PATTERN = r"^[^@\s]{1,64}@[^@\s]{1,185}\.[^@\s]{2,}$"
+
+
+def normalize_email(value):
+    return value.strip().lower() if isinstance(value, str) else value
+
+
 class UserSignup(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     username: str = Field(min_length=3, max_length=50, pattern=r"^[a-z0-9_]+$")
     password: SecretStr = Field(min_length=15, max_length=128)
+    email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
 
     @field_validator("username", mode="before")
     @classmethod
@@ -137,6 +147,39 @@ class UserRead(BaseModel):
     username: str
     role: Literal["member", "admin"]
     is_active: bool
+    email: str | None = None
+
+
+class EmailChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    email: str = Field(max_length=254, pattern=EMAIL_PATTERN)
+    password: SecretStr = Field(min_length=1, max_length=128, description="Current password")
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    email: str = Field(max_length=254, pattern=EMAIL_PATTERN)
+
+    _normalize_email = field_validator("email", mode="before")(normalize_email)
+
+
+class PasswordResetConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    token: SecretStr = Field(min_length=20, max_length=200)
+    new_password: SecretStr = Field(min_length=15, max_length=128)
+
+
+class ResumeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    size_bytes: int
+    sha256: str
+    uploaded_at: datetime
 
 
 class TokenRead(BaseModel):

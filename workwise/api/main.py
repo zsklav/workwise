@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 
-from workwise.api.routes import applications, auth, companies, jobs, notifications, operations
+from workwise.api.routes import (applications, auth, companies, jobs, notifications, operations,
+                                 password_reset, resumes)
 from workwise.api.dependencies import DbSession
 from workwise.core.auth_limits import throttle
 from workwise.core.observability import ObservabilityMiddleware
@@ -36,7 +37,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Probes and metrics stay unversioned. Everything else lives under /v1; the unprefixed paths
 # remain as hidden aliases so existing clients keep working.
 app.include_router(operations.router)
-for router in (companies.router, auth.router, notifications.router, jobs.router, applications.router):
+for router in (companies.router, auth.router, password_reset.router, resumes.router, notifications.router,
+               jobs.router, applications.router):
     app.include_router(router, prefix="/v1")
     app.include_router(router, include_in_schema=False)
 
