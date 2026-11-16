@@ -1,66 +1,73 @@
 # WorkWise
 
-A Python backend for managing jobs, built incrementally while learning backend
-engineering, database design, testing, and distributed systems.
+A job-board backend built with FastAPI and PostgreSQL. It covers the parts a real
+service needs around the CRUD: login with rotating tokens, ownership rules,
+safe concurrent edits, an event pipeline, monitoring, backups and CI.
 
-The Phase 1 checkpoint established a working single FastAPI application with
-PostgreSQL persistence. Later checkpoints add bounded job-list pagination,
-exact company filtering, and Company CRUD APIs linked to jobs by foreign key.
-Job applications add a private, versioned applicant/employer workflow.
-The project was built from scratch; no Java migration is included.
+**Status:** all tests pass in CI. A Render free-tier blueprint is ready, but the
+service has not been deployed yet, so there is no live URL.
+
+## Highlights
+
+| Area | What is built |
+|---|---|
+| API | Jobs, companies, applications, search with filters and sorting, `/v1` prefix, OpenAPI docs at `/docs` |
+| Auth | Argon2 passwords, JWT access tokens, single-use refresh tokens, logout everywhere, password reset by email, roles (member, admin) |
+| Safe writes | Version checks on every update (409 on stale edits), idempotency keys for retried creates, soft delete with admin restore |
+| Data | Alembic migrations, separate runtime and migration database users, backup and restore drills |
+| Events | Transactional outbox, RabbitMQ publisher and worker, retries, dead-letter queue, replay, in-app inbox |
+| Operations | JSON logs, Prometheus metrics, Grafana dashboards, OpenTelemetry traces, retention tools, per-IP rate limit |
+| Quality | 450+ PostgreSQL integration tests, ruff, dependency audit and coverage in CI, Docker smoke and failure demos |
+
+## Quick start
+
+```bash
+cp .env.example .env            # then set real passwords and a 32+ character JWT_SECRET
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+python -m scripts.database.migrate
+python -m uvicorn workwise.api.main:app --port 8000
+```
+
+This needs a running PostgreSQL with the two database roles created first (see
+[Fresh PostgreSQL databases](#fresh-postgresql-databases)). Then open `http://127.0.0.1:8000/docs`. The full Windows and Docker steps are in
+[Docker setup](#docker-setup) and [Local setup](#local-setup). Request examples are
+under [API](#api).
 
 ## Implemented
 
-- Job creation, listing, retrieval, replacement, partial updates, and deletion.
-- Password reset by email with a pluggable sender (disabled by default) and PDF resume upload on local storage; see [the guide](docs/password-reset-and-resume.md).
-- Soft delete for jobs: deleted jobs are hidden but keep their row and applications; admins can list and restore them.
-- Job salary range, remote flag and job type with filters; `/v1` API prefix with the old paths kept as hidden aliases.
-- Job search (`q` on title, description, location), `sort`, and an `X-Total-Count` header.
-- Per-IP rate limit on every route except `/health`, `/ready` and `/metrics` (`API_IP_LIMIT`, default 300 per window), stored in PostgreSQL so all instances share it.
-- Opt-in CORS (`CORS_ORIGINS`) and baseline security headers on every response.
-- CI runs ruff, a dependency audit (pip-audit) and tests with coverage (85% locally, 415 tests).
-- Job-list pagination with validated limit/offset and deterministic ID ordering.
-- Optional exact company filtering, applied before pagination.
-- Company creation, paginated listing, retrieval, replacement, partial updates,
-  and deletion, with 409 responses for duplicate names or linked-company deletion.
-- Required job company IDs, database foreign keys, and backfill of legacy names.
-- Optional job descriptions with distinct omitted-field and explicit-null behavior.
-- Pydantic input validation and typed response models.
-- SQLAlchemy ORM, request-scoped sessions, and database-generated IDs.
-- Version-checked job/company updates and deletes, with 409 on stale edits.
-- Optional idempotency keys for job/application creation, with atomic 24-hour response replay.
-- Private job applications, owner/admin review, valid state transitions and version conflicts.
-- Alembic schema migrations and separate runtime/migration credentials.
-- PostgreSQL integration tests with transaction isolation and independent-connection
-  commit verification.
-- OpenAPI documentation at `/docs`.
-- Signup/login with Argon2 password hashing and expiring JWT bearer tokens.
-- Member/admin roles, company ownership, and authorization for every write.
-- Rotating refresh tokens, account-wide logout/replay containment and shared auth throttles.
-- Docker image and Compose stack with an isolated PostgreSQL volume and migration service.
-- GitHub Actions for PostgreSQL tests, image build, and HTTP container smoke tests.
-- Database/schema readiness at `/ready`, separate from process health at `/health`.
-- JSON request logs, server-generated request IDs, and bounded HTTP latency/error metrics.
-- Admin-only Prometheus-format snapshots at `/metrics`.
-- Optional Prometheus/Grafana stack, service scrape credentials, dashboard and alert rules.
-- Bounded retention previews/cleanup preserving pending events, unread inbox items and receipts, plus a purge of old soft-deleted jobs that have no applications.
-- Repeatable HTTP/SQL performance reports and measured company/order index tuning.
-- Transactional outbox for `job.created.v2`, with compatibility for existing v1 events.
-- A RabbitMQ publisher, notification worker, and independent notification database/API.
-- Separate least-privilege broker identities for publishing, consuming and operator replay.
-- Snapshot-consistent database backups and isolated restore drills comparing data, schema and permissions.
-- Authenticated user inbox, unread filtering and idempotent read markers.
-- OpenTelemetry traces across HTTP, durable outbox, publisher, worker and internal inbox API; Jaeger UI.
-- Confirmed publishing, manual acknowledgements, duplicate handling, bounded retries, DLQ and operator replay.
-- Docker failure demos exercised in CI: broker outage, offline worker, database outage and recovery.
-- Optional HAProxy gateway, two API/publisher/worker instances, and process-failure demos with safe retries.
+### API and data
+- Job and company CRUD with validated pagination, exact company filter, and search (`q` on title, description and location).
+- Job salary range, remote flag and job type, with filters and `sort`; total count in `X-Total-Count`.
+- `/v1` API prefix. The old unprefixed paths stay as hidden aliases.
+- Soft delete for jobs: hidden but kept with their applications. Admins can list and restore them, and a retention command purges old ones.
+- Private job applications with owner and admin review, valid status transitions and version conflicts.
+- PDF resume upload on local storage, with controlled download for the applicant, company owner and admins.
+- Companies own their jobs through a foreign key. Responses include the read-only company name.
 
-Companies have their own table. Jobs store `company_id`; API responses also
-include the company's name as read-only `company` text. Create a company first,
-then use its returned ID when creating a job. Legacy company names have been
-backfilled without changing their case or surrounding whitespace.
-See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow and guarantees.
-A Render free-tier blueprint is prepared (`render.yaml`, [deploy guide](docs/deploy-render.md)) but has not been deployed yet.
+### Security
+- Signup and login with Argon2 hashing, expiring JWTs, rotating refresh tokens and account-wide logout.
+- Password reset by email with single-use, expiring, hashed tokens and a pluggable sender (off by default).
+- Member and admin roles, company ownership, and an authorization check on every write.
+- Per-IP rate limit on every route except `/health`, `/ready` and `/metrics`, shared by all instances through PostgreSQL.
+- Trusted-proxy handling for `X-Forwarded-For`, opt-in CORS and baseline security headers.
+- Least-privilege database users and separate RabbitMQ identities for publishing, consuming and replay.
+
+### Reliability
+- Version-checked updates and deletes (409 on stale edits) and optional idempotency keys with 24-hour replay.
+- Transactional outbox for `job.created.v2`, confirmed publishing, manual acknowledgements, bounded retries, DLQ and operator replay.
+- Independent notification database and API with an authenticated inbox and idempotent read markers.
+- Snapshot-consistent backups and isolated restore drills that compare data, schema and permissions.
+- Docker failure demos run in CI: broker outage, offline worker, database outage and recovery. Optional HAProxy gateway with two instances.
+
+### Observability and delivery
+- JSON request logs with request IDs, bounded latency and error metrics, admin-only `/metrics`, and `/ready` separate from `/health`.
+- Optional Prometheus and Grafana stack with alert rules, and OpenTelemetry traces across HTTP, outbox, publisher, worker and inbox (Jaeger UI).
+- Repeatable HTTP and SQL performance reports with measured index tuning.
+- GitHub Actions: ruff, dependency audit, PostgreSQL tests with coverage, image build and HTTP container tests.
+
+See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow,
+[password reset and resume upload](docs/password-reset-and-resume.md) for those two features, and the
+[Render deploy guide](docs/deploy-render.md) (`render.yaml`, not yet deployed).
 
 ## Stack
 
@@ -296,22 +303,33 @@ permission on both its current company and destination company.
 | GET | `/ready` | Database reachable and at the expected schema revision | 200 |
 | GET | `/metrics` | Prometheus HTTP metrics; admin bearer token required | 200 |
 | GET | `/v1/jobs` | Search and filter jobs: `q`, `company`, `company_id`, `remote`, `job_type`, `min_salary`, `sort`, `limit`, `offset`; total in `X-Total-Count` | 200 |
+| GET | `/v1/jobs/{job_id}` | Retrieve a job | 200 |
+| POST | `/v1/jobs` | Create a job | 201 |
+| PUT | `/v1/jobs/{job_id}` | Replace editable job fields | 200 |
+| PATCH | `/v1/jobs/{job_id}` | Update supplied fields only | 200 |
+| DELETE | `/v1/jobs/{job_id}?version=N` | Soft-delete a job (applications kept) | 204 |
 | GET | `/v1/jobs/deleted` | Admin only: soft-deleted jobs, newest first | 200 |
 | POST | `/v1/jobs/{job_id}/restore?version=N` | Admin only: undo a soft delete | 200 |
-| GET | `/jobs/{job_id}` | Retrieve a job | 200 |
-| POST | `/jobs` | Create a job | 201 |
-| PUT | `/jobs/{job_id}` | Replace editable job fields | 200 |
-| PATCH | `/jobs/{job_id}` | Update supplied fields only | 200 |
-| DELETE | `/jobs/{job_id}` | Soft-delete a job (hidden, applications kept), no response body | 204 |
-| POST | `/companies` | Create a company with a unique name | 201 |
-| GET | `/companies` | List a page of companies in ID order | 200 |
-| GET | `/companies/{company_id}` | Retrieve a company | 200 |
-| PUT | `/companies/{company_id}` | Replace editable company fields | 200 |
-| PATCH | `/companies/{company_id}` | Update supplied company fields | 200 |
-| DELETE | `/companies/{company_id}` | Delete a company with no jobs | 204 |
-| POST | `/auth/signup` | Register a member using JSON username/password | 201 |
-| POST | `/auth/login` | Exchange password-grant form credentials for a JWT | 200 |
-| GET | `/auth/me` | Return the authenticated user | 200 |
+| POST | `/v1/jobs/{job_id}/applications` | Apply to a job | 201 |
+| GET | `/v1/jobs/{job_id}/applications` | Company owner or admin: list applications | 200 |
+| GET | `/v1/applications/mine` | Your applications | 200 |
+| GET / PATCH | `/v1/applications/{id}` | Read or review an application | 200 |
+| GET | `/v1/applications/{id}/resume` | Applicant, company owner or admin: download the resume | 200 |
+| PUT / GET / DELETE | `/v1/resume` | Upload (PDF), download or remove your resume | 200 / 204 |
+| POST / GET | `/v1/companies` | Create a company, or list a page of companies | 201 / 200 |
+| GET / PUT / PATCH / DELETE | `/v1/companies/{id}` | Read, replace, update or delete a company with no jobs | 200 / 204 |
+| POST | `/v1/auth/signup` | Register a member (optional email) | 201 |
+| POST | `/v1/auth/login` | Password-grant form login, returns access and refresh tokens | 200 |
+| POST | `/v1/auth/refresh` | Rotate a refresh token | 200 |
+| POST | `/v1/auth/logout` | Sign out all sessions | 204 |
+| GET | `/v1/auth/me` | The authenticated user | 200 |
+| PUT | `/v1/auth/me/email` | Set your email (current password required) | 200 |
+| POST | `/v1/auth/password-reset/request` | Email a reset link; same answer for unknown addresses | 202 |
+| POST | `/v1/auth/password-reset/confirm` | Set a new password with the link token | 204 |
+| GET | `/v1/notifications` | Your inbox | 200 |
+| PATCH | `/v1/notifications/{event_id}/read` | Mark an item read | 200 |
+
+Every `/v1` path also answers without the prefix. Over the rate limit the API returns `429` with `Retry-After`.
 
 ### Example requests
 
@@ -507,23 +525,17 @@ Docker exports OpenTelemetry traces to Jaeger at
 
 ## Current scope and next steps
 
-This is a learning checkpoint, not a production deployment. Signup/login and
-ownership checks, refresh/logout and shared login limits are implemented.
-Password reset, MFA and deployment hardening remain future work. Version-based conflict detection protects job and
-company PUT/PATCH/DELETE requests.
-Offset pagination is intended for this initial stage;
-large offsets still scan preceding rows, as demonstrated in the query-plan experiment.
+Built as a learning project and a portfolio piece. What is not done:
 
-Docker, CI, transactional messaging, an in-app inbox, distributed tracing and
-failure recovery demos, monitoring and operator retention tools are implemented.
-The initial [performance baseline and query tuning](docs/performance.md) are complete.
-The initial [security hardening](docs/security-hardening.md) is also implemented.
-Database [backup and restore verification](docs/backup-restore.md) is available for both Docker databases,
-with a native jobs backup command. Off-host storage and live recovery cutover remain operator work.
-Idempotent creation, job applications and the optional [multiple-instance demo](docs/multiple-instances.md)
-are implemented. Use the [study guide](docs/study-guide.md) to trace the design before live deployment.
-Further profiling remains driven by measurements. External email delivery and
-live deployment remain deferred.
+- **Live deployment.** `render.yaml` is ready; nothing is running yet. On Render's free plan the service sleeps after 15 minutes, the free database is deleted after 30 days, and local resume files do not survive a deploy.
+- **Email.** The SMTP sender is untested against a real server, and addresses are not verified.
+- **Resumes.** PDF files are checked by format and size only, not scanned for malware.
+- **Not built:** MFA, a front end, off-host backup storage, and caching.
+- Offset pagination is used. Large offsets scan the rows before them, as the query-plan experiment shows.
+
+Further reading: [performance baseline](docs/performance.md), [security hardening](docs/security-hardening.md),
+[backup and restore](docs/backup-restore.md), [multiple instances](docs/multiple-instances.md) and the
+[study guide](docs/study-guide.md).
 
 ## Engineering notes
 
