@@ -2,6 +2,7 @@
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from functools import lru_cache
+import logging
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -16,6 +17,7 @@ from workwise.operations.metrics import Scraper, database_metrics, inspection_en
 from workwise.db.session import database_url
 
 router = APIRouter()
+readiness_logger = logging.getLogger("workwise.readiness")
 schema_head = ScriptDirectory.from_config(Config(str(ROOT_DIR / "alembic.ini"))).get_current_head()
 
 
@@ -47,7 +49,11 @@ def metrics(user: CurrentUser) -> Response:
 def readiness(db: DbSession) -> dict[str, str]:
     try:
         revisions = tuple(db.scalars(text("SELECT version_num FROM public.alembic_version")))
-    except SQLAlchemyError:
+    except SQLAlchemyError as error:
+        # Server log only: the driver message names the host/user/reason, never the password.
+        reason = str(getattr(error, "orig", error)).strip().splitlines()[0][:300] if str(error) else ""
+        readiness_logger.warning("readiness_database_error type=%s reason=%s",
+                                 type(getattr(error, "orig", error)).__name__, reason)
         raise HTTPException(status_code=503, detail="Database not ready") from None
     if revisions != (schema_head,):
         raise HTTPException(status_code=503, detail="Database migrations not ready")
