@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.vscode
+.pytest_cache
+__pycache__
+tests
+docs
+docker
+backups
+performance-results
+.env*
+data
+*.dump

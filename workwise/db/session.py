@@ -20,7 +20,8 @@ database_url = URL.create(
 engine = create_engine(
     database_url,
     pool_pre_ping=True,
-    connect_args={"connect_timeout": 5},
+    # Transaction poolers cannot keep prepared statements between requests.
+    connect_args={"connect_timeout": 5, **({"prepare_threshold": None} if settings.db_pooler else {})},
 )
 
 SessionLocal = sessionmaker(bind=engine)

@@ -89,3 +89,8 @@ def test_only_applicant_company_owner_and_admins_read_an_applicants_resume(anony
     assert anonymous_client.get(path).status_code == 401
     anonymous_client.delete("/v1/resume", headers=headers["candidate"])
     assert anonymous_client.get(path, headers=headers["employer"]).status_code == 404
+
+
+def test_upload_can_be_switched_off_for_read_only_deployments(anonymous_client, people, monkeypatch):
+    monkeypatch.setattr(auth_settings, "resume_enabled", False)
+    assert upload(anonymous_client, people[0]["candidate"]).status_code == 503
