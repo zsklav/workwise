@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     db_name: str = "workwise"
     db_user: str = "workwise_app"
     db_password: SecretStr
+    # True behind a transaction pooler (Supabase port 6543): disables server-side prepared statements.
+    db_pooler: bool = False
 
 
 class MigrationSettings(Settings):
@@ -52,6 +54,7 @@ class AuthSettings(Settings):
     password_reset_url: str = "http://localhost:3000/reset-password"
     password_reset_minutes: int = Field(default=30, ge=5, le=120)
     # Resume uploads are stored as local files; the directory must be writable and persistent.
+    resume_enabled: bool = True
     resume_dir: str = "data/resumes"
     resume_max_bytes: int = Field(default=2_000_000, ge=1_000, le=10_000_000)
     # Comma-separated CIDRs of reverse proxies whose X-Forwarded-For is believed. Empty = trust none.

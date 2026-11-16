@@ -42,6 +42,8 @@ def read_pdf(upload: UploadFile):
 @router.put("/resume", response_model=ResumeRead)
 def upload_resume(file: UploadFile, request: Request, response: Response, db: DbSession, user: CurrentUser) -> UserResume:
     """Create or replace your resume. Accepts a PDF up to RESUME_MAX_BYTES."""
+    if not auth_settings.resume_enabled:
+        raise HTTPException(503, "Resume upload is disabled on this deployment")
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > auth_settings.resume_max_bytes + 4096:
         raise HTTPException(413, "Resume is too large")
