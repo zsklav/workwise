@@ -4,8 +4,15 @@ A job-board backend built with FastAPI and PostgreSQL. It covers the parts a rea
 service needs around the CRUD: login with rotating tokens, ownership rules,
 safe concurrent edits, an event pipeline, monitoring, backups and CI.
 
-**Status:** all tests pass in CI. A Render free-tier blueprint is ready, but the
-service has not been deployed yet, so there is no live URL.
+**Live demo:** [API docs](https://workwise-murex.vercel.app/docs) ·
+[readiness check](https://workwise-murex.vercel.app/ready). It runs on Vercel's free plan
+with a free Supabase PostgreSQL database
+([setup guide](docs/deploy-vercel-supabase.md)).
+
+The demo is a reduced deployment. The API, auth, jobs, companies and applications
+work. RabbitMQ, the notification service, monitoring, resume upload and password reset
+email are not part of it and answer `503`. The free database pauses after a week
+without use. The full stack runs locally with Docker Compose.
 
 ## Highlights
 
@@ -67,7 +74,7 @@ under [API](#api).
 
 See [distributed systems and failure demos](docs/distributed-systems.md) for the event flow,
 [password reset and resume upload](docs/password-reset-and-resume.md) for those two features, and the
-[Render deploy guide](docs/deploy-render.md) (`render.yaml`, not yet deployed).
+[Vercel and Supabase deploy guide](docs/deploy-vercel-supabase.md). A Render blueprint (`render.yaml`) also exists but is not used, because Render's free plan needs a card.
 
 ## Stack
 
@@ -527,7 +534,7 @@ Docker exports OpenTelemetry traces to Jaeger at
 
 Built as a learning project and a portfolio piece. What is not done:
 
-- **Live deployment.** `render.yaml` is ready; nothing is running yet. On Render's free plan the service sleeps after 15 minutes, the free database is deleted after 30 days, and local resume files do not survive a deploy.
+- **Live deployment is partial.** The Vercel demo runs only the API and database. Events, notifications, monitoring, resume storage and email need a host with a persistent disk and background workers.
 - **Email.** The SMTP sender is untested against a real server, and addresses are not verified.
 - **Resumes.** PDF files are checked by format and size only, not scanned for malware.
 - **Not built:** MFA, a front end, off-host backup storage, and caching.

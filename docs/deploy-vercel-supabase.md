@@ -63,5 +63,14 @@ python -m workwise.cli.manage_users create-admin <username>
 - All visitors share one rate-limit budget, because the app cannot tell Vercel's
   proxy from users. `API_IP_LIMIT=3000` makes that budget roomy.
 - Resume upload answers 503. Notifications answer 503. Password reset answers 503.
-- Not verified: this setup has not been deployed. The first deploy may need small fixes
-  (for example the Python version Vercel picks, or the Supabase pooler user name).
+- Deployed and checked on 2026-11-16: `/ready` returned `{"status":"ready"}`.
+
+## Troubleshooting
+
+- `/ready` says `Database not ready`: open Vercel **Logs** and search `readiness_database_error`.
+  The line names the cause. A pasted value can carry a hidden tab or space, which shows as
+  `'\taws-...'`; delete the value, type it again, then **Redeploy**.
+- To test the Vercel settings from your own computer, run
+  `powershell -ExecutionPolicy Bypass -File scripts\deploy\check_vercel_db.ps1`.
+- One-time database setup (migrations and first admin) is
+  `scripts\deploy\supabase_setup.ps1`.
